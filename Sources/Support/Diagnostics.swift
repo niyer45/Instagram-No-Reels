@@ -83,7 +83,7 @@ enum Diagnostics {
 
     // MARK: Page outlines
 
-    private static let outlineCaptures: Set<String> = ["ready", "ready-3s", "refresh-start", "refresh-loading", "refresh-end", "scrolled", "search-ready", "search-ready-3s", "search-focus"]
+    private static let outlineCaptures: Set<String> = ["ready", "ready-3s", "refresh-start", "refresh-loading", "refresh-end", "scrolled", "search-ready", "search-ready-3s", "search-focus", "inbox-ready"]
     @MainActor private static var outlineSequence: Int?
 
     /// Sequence number of an outline file name (`page-outline-<capture>-<n>.json`).

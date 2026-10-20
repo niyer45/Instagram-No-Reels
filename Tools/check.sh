@@ -15,6 +15,8 @@ SWIFT_CHECK_SOURCES=(
   Sources/Filter/FollowingPolicy.swift
   Sources/Navigation/RouteClassifier.swift
   Sources/Navigation/RouteDecision.swift
+  Sources/Notifications/InboxBaseline.swift
+  Sources/Notifications/InboxThread.swift
   Sources/Support/SVGPath.swift
 )
 

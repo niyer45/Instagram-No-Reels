@@ -67,6 +67,8 @@ Sources/
                   + BridgeMessage (typed messages), UserScripts (loads Resources/*.js|css)
   Filter/         FollowingPolicy.swift (unchanged), FollowingStore, FilterStatus(+Payload),
                   ContentFilterSettingsView
+  Notifications/  MessageNotifications (setting, permission), MessageWatcher, InboxProbe (hidden web view),
+                  InboxBaseline/InboxThread, BackgroundRefreshScheduler (§3.7)
   Support/        Haptics, Theme (colors, hairline), Glyphs + SVGPath, Diagnostics,
                   Connectivity, DebugLaunchOptions (DEBUG only)
 Resources/
@@ -236,6 +238,7 @@ drop malformed messages).
 | `searchFocus` | `{}` | the Search field gained focus (DEBUG outline trigger only; native ignores it otherwise) |
 | `wordmark` | `{viewBox, paths}` | Instagram wordmark vector captured for the native Home header (stories web view only) |
 | `openControls` | `{}` | user chose the filter settings entry |
+| `inboxState` | `{threads:[{id, unread, name}]}` | inbox page only: thread rows changed (at most once per second, only when the state differs from the last post; <= 50 threads, `name` <= 80 chars); feeds message notifications (§3.7) |
 
 Removed (Phase 1): `scroll {y, dy}`. Native observes the web view's
 `scrollView.contentOffset` directly (§3.3), which is synchronous and frame-exact, so a
@@ -289,6 +292,65 @@ by themselves on reconnect. Web content process termination reloads the page wit
 skeleton up. Only the top four pages of a stack keep their documents; deeper pages, and pages
 off screen at a memory warning, unload behind a snapshot and reload when shown.
 
+### 3.7 Message notifications
+
+Local notifications for new direct messages. There is no backend, no Instagram API and a `WKWebView`
+cannot receive web push, so the app polls the page itself from iOS background app refresh. It is
+**off by default** (Content filters sheet, "Message notifications").
+
+Mechanism (`Sources/Notifications/`):
+
+- **Detection** (`Bridge.js`, Tabs region): on an `inbox` route, once the document is complete, Bridge.js reads the
+  thread rows (`a[href*="/direct/t/"]`) and posts `inboxState` (§3.4). Unread is a structural signal (label, blue dot or
+  bold preview; the order and fallbacks are in `DOM-NOTES.md`). It has its own `MutationObserver` (plus `load`) and a
+  one-second throttle because a hidden web view may not run `requestAnimationFrame`. Signed-in inbox markup has never been
+  observed, so DEBUG builds write an `inbox-ready` page outline (structure only) from the Messages tab's `onReady`
+  and from every watcher run, to correct the selectors from a device. The outline masks labels and records no font
+  weights or colours, so it shows the row structure but not which unread signal matched; the `inbox-check` event's
+  `unread` count is the check for that.
+- **`InboxProbe`**: a hidden, far-offscreen web view built by `WebPageFactory` (default data store, so it is signed
+  in) loads `/direct/inbox/`, waits for `inboxState` (1.5 s settle after the first, 20 s timeout), and is torn down
+  (scripts, message handler, delegate, view) on every outcome. Navigation is limited to the inbox; Instagram's login
+  means signed out. It loads only the page a user would open; it makes no other requests and never reads cookies.
+  When the app has a window it is added to it (offscreen); in a background launch without a scene it stays
+  unattached. No window is created for it: without a scene there is nothing to host one, and while the app is in the
+  background WebKit treats the view as hidden either way. Whether WebKit keeps the inbox's web content process
+  running long enough in a background refresh is **unverified** (it may be suspended once the main load finishes,
+  so the probe times out and nothing is announced); the DEBUG `inbox-check` event records `timed-out` and `scene`
+  (0/1) to tell this apart on a device.
+- **`MessageWatcher`**: compares the unread threads with the stored baseline (`InboxBaseline`, UserDefaults:
+  thread id, unread flag, display name) and posts one `UNNotificationRequest` per thread that was read or unknown
+  before and is unread now ("New message from <name>", or "New message"; the thread id in `userInfo`). The first run
+  without a baseline only records it, as does turning the feature on. It never notifies while the app is active; the
+  Messages tab's own `inboxState` (while the inbox is on screen, and its last state again whenever it comes on
+  screen) refreshes the baseline, so seen threads are not announced again, and a thread page on screen marks that
+  thread read in the baseline, so a reply after reading it in the app is announced. A run stores and posts nothing if
+  the feature was turned off or the session signed out while it ran.
+- **`BackgroundRefreshScheduler`**: `BGAppRefreshTask` `com.local.following.inbox-refresh`
+  (`BGTaskSchedulerPermittedIdentifiers`, `UIBackgroundModes` `fetch`), registered at launch, `earliestBeginDate`
+  15 minutes ahead, rescheduled at the start of every run (so a failed or expired run still has a successor) and when
+  the app enters the background, only while the feature is on, a username is cached and the session is not signed
+  out. The expiration handler cancels the check (the probe finishes `cancelled` and tears down). Home is pre-warmed
+  when the scene connects, not in `didFinishLaunching` (where a scene-based app is always `.background`, so a
+  background launch cannot be told apart): a background launch without a scene loads only the inbox. iOS may still
+  connect the scene in the background, and then the shell and Home load as on any launch.
+- **Tap**: `AppDelegate` is the `UNUserNotificationCenterDelegate`; a tap calls `Router.openMessages(thread:)`, which
+  opens `/direct/t/<id>/` through the normal presentation (Messages tab, thread pushed) or just the tab.
+
+Limits: iOS decides when a refresh runs (typically within an hour, often much later, never with Background App
+Refresh or Low Power Mode off, rarely after a force quit), so notifications are late and can be skipped. A thread
+that is still unread in the baseline does not notify again for a further message until it has been seen read (in
+the app, or read elsewhere and seen so by a later check). Comparing a hash of the row's preview text instead was
+considered and not done: the preview line carries a relative time ("2h") in unobserved markup, so it would re-announce
+an unread thread on every run. Detection depends on Instagram's markup and can stop working when it changes.
+
+Privacy: nothing leaves the device. Stored state is the baseline above plus the on/off flag. The baseline is cleared
+on sign out, whenever the session is seen signed out, and when the feature is turned off; the on/off flag is kept
+across sign out. A display name appears only in the local
+notification, shown to the signed-in user on their own device. Diagnostics (DEBUG) log counts and enumerated
+outcomes only, never names or thread ids. DEBUG builds take `SHELL_INBOX_CHECK=1` to run one check four seconds
+after launch with the app active and post its notifications (a missing baseline counts as empty).
+
 ## 4. Conventions
 
 - Swift: `@MainActor` for anything touching WebKit or UIKit. No force unwraps outside
@@ -308,6 +370,7 @@ off screen at a memory warning, unload behind a snapshot and reload when shown.
   search field gains focus, from the `searchFocus` bridge message). Their `page` also has a
   `searchField` section (`null` when absent): the outline subtree (depth <= 6, <= 80 nodes) of the
   `data-native-search-field` box that `tabScanSearch` marks, with its `data-native-*` marks in each node's `data`.
+  Message notifications add `inbox-ready` (the Messages tab's page when ready, and every watcher run; §3.7), same files and retention.
 - Commits: small, imperative subject, body says *why*. Run the checks in §5 before every
   commit.
 
@@ -333,7 +396,7 @@ Simulator smoke (a booted iPhone simulator is available via `xcrun simctl`):
 `Tools/simshots.sh <udid> [dir]` installs the Debug build and captures every tab live and on its
 skeleton, a pushed page, the failure state and the offline banner. DEBUG builds read `SHELL_TAB`,
 `SHELL_SKELETON_PREVIEW=1`, `SHELL_FAILURE_PREVIEW=1`, `SHELL_OPEN_URL`, `SHELL_OPEN_URLS`,
-`SHELL_OFFLINE`, `SHELL_MEMORY_WARNING`, `SHELL_STALE_AFTER`, `SHELL_POP`, `SHELL_PRESENT` and
+`SHELL_OFFLINE`, `SHELL_MEMORY_WARNING`, `SHELL_STALE_AFTER`, `SHELL_POP`, `SHELL_PRESENT`, `SHELL_INBOX_CHECK` (read in `AppDelegate`) and
 Home's fixture harness `SHELL_HOME_FIXTURE`/`SHELL_HOME_DEMO` (passed as `SIMCTL_CHILD_…` to
 `xcrun simctl launch`; `Sources/Support/DebugLaunchOptions.swift`). `Tools/sim-memory.sh <udid>` prints the app's and its
 WebKit processes' resident memory (host RSS; compare runs on one machine only). `Tools/launch-timing.sh

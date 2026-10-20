@@ -24,6 +24,9 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         Diagnostics.launchMark("scene")
         #endif
         let environment = (UIApplication.shared.delegate as? AppDelegate)?.environment ?? AppEnvironment()
+        // Pre-warm Home here, not in didFinishLaunching: there a scene-based app is always `.background`, so a
+        // background refresh launch (no scene, message notifications) cannot be told apart and must not load Home.
+        environment.prewarmHome()
         let window = UIWindow(windowScene: scene)
         window.overrideUserInterfaceStyle = environment.theme.interfaceStyle
         // The scene's traits are the system's (the window's override does not reach them); web content follows them.

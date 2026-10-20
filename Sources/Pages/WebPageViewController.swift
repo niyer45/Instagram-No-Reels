@@ -24,6 +24,8 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
     private(set) var isLoginContent = false
     var kind: RouteKind { isLoginContent ? .login : route.kind }
     var onReady: (() -> Void)?
+    /// The inbox's last `inboxState` (message notifications), reported again whenever the inbox comes on screen.
+    private var inboxThreads: [InboxThread]?
 
     /// The page's web view, created on first use. A page unloaded to save memory releases it
     /// (`hibernate`) and gets a new one when it is shown again.
@@ -457,6 +459,7 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        messagesSeen()
         // Stack cap: only the top `liveStackDepth` pages of this stack keep their documents.
         guard let stack = navigationController?.viewControllers, stack.last === self, stack.count > Self.liveStackDepth else { return }
         for case let page as WebPageViewController in stack.dropLast(Self.liveStackDepth) { page.hibernate() }
@@ -507,6 +510,7 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
         guard isViewLoaded, hibernation == nil, viewIfLoaded?.window == nil, placement != .modal,
               let current = webView.url ?? url, current.scheme == "https" else { return }
         hibernation = Hibernation(url: current, offset: webView.scrollView.contentOffset)
+        inboxThreads = nil
         timeoutTimer?.invalidate()
         cancelRefresh()
         hideFailure()
@@ -780,6 +784,13 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
     func refreshSettle() {}
     func refreshDidFinish() {}
 
+    /// Message notifications: what this page shows on screen is seen. Bridge.js posts `inboxState` only when it
+    /// changes, so an inbox that changed while covered or in another tab is reported again here.
+    private func messagesSeen() {
+        if route.kind == .thread { environment.messages.threadSeen(route.identity) }
+        else if route.kind == .inbox, let inboxThreads { environment.messages.inboxPageDidReport(inboxThreads, visible: true) }
+    }
+
     // MARK: Bridge
 
     func bridge(didReceive message: BridgeMessage) {
@@ -791,6 +802,8 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
             if next != route {
                 route = next
                 setLoginContent(next.kind == .login)
+                inboxThreads = nil
+                if viewIfLoaded?.window != nil { messagesSeen() }
             }
             updateTitle()
         case .navigate(let target):
@@ -816,6 +829,12 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
             pageMessage(message)
         case .searchFocus:
             break
+        case .inboxState(let threads):
+            // The visible Messages tab's own inbox: those threads are seen (message notifications' baseline).
+            if route.kind == .inbox {
+                inboxThreads = threads
+                environment.messages.inboxPageDidReport(threads, visible: viewIfLoaded?.window != nil)
+            }
         }
     }
 
@@ -898,6 +917,7 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         hasCommitted = true
+        inboxThreads = nil
         if let current = webView.url {
             let next = Route(url: current)
             if next != route { route = next; updateTitle() }

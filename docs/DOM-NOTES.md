@@ -186,3 +186,21 @@ markup built from these assumptions, not a capture of Instagram's signed-in DOM.
 | Feed and story videos start muted with a tap-to-unmute toggle | An element labelled like "Toggle audio", "Audio is muted", "Audio is playing", "Unmute", "Mute" (button, `[role="button"]` or svg `aria-label`). The skin never targets it: no rule hides it or sets `pointer-events` on it (audited: the only hiding rules in cards are `form:has(textarea)`, the stories row, app banners and `[data-native-hidden]` bars, none of which contain a video). Native code does not touch it either. | assumed | If the control is missing from the outline of a signed-in card, capture it and record the real label here; do not add CSS that hides it. |
 | Playback category | `AudioSession.activateForPlayback()` sets `.playback`/`.moviePlayback` once at scene connect (category only, not activated). | n/a (native) | Without it, sound is silenced by the ringer switch. |
 | Playback policy | `mediaTypesRequiringUserActionForPlayback = .all` unchanged: unmute happens in Instagram's tap handler (a user gesture); muted autoplay is Instagram's own behaviour. | assumed | Only revisit with a concrete device finding. |
+
+## Messages inbox (`Bridge.js` "Tabs" region, message notifications)
+
+`inboxState` is posted on `inbox` routes (the Messages tab and the hidden background-refresh web view). Signed-in inbox
+markup has **never been observed** (logged out only): every row is **assumed**. DEBUG builds write
+`page-outline-inbox-ready-<n>.json` after a background-style check and when the Messages tab is ready, so the real
+structure can be pulled from a device and these rules corrected.
+
+| What | Selector / rule | Found | Fallback when it fails |
+| --- | --- | --- | --- |
+| Thread row link | `a[href*="/direct/t/"]` whose path is `/direct/t/<id>/` on an instagram.com host, `<id>` = `[A-Za-z0-9_.-]{1,64}`; first link per id, at most 50 | assumed (route shape matches the Router's `thread` kind) | No links: nothing is posted, so nothing is ever announced. |
+| Row | The link itself when it holds text; else the nearest ancestor (<= 5 levels) that holds only this thread link | assumed | If the link holds no text, name is empty ("New message") and only label/dot signals inside the row apply. |
+| Name | Text of the first text-bearing leaf in the row (no children, not svg/img), whitespace collapsed, trimmed, first 80 characters | assumed | Empty name: the notification reads "New message". |
+| Unread signal 1: label | Any element in the row with `aria-label` or `title` containing the word "unread", or a leaf whose whole text is "Unread" / "<n> unread" | assumed | Falls to signal 2. |
+| Unread signal 2: dot | A childless `div`/`span`/`i` in the row, 4-16 px wide and tall (within 2 px of square), with an opaque solid blue background (b >= 200, b > r + 60, b > g; Instagram blue is rgb(0,149,246)) | assumed | Falls to signal 3. |
+| Unread signal 3: bold preview | The row's second text leaf (after the name) has computed `font-weight` >= 600 (or `bold`) | assumed | If none of the signals match, every row is read and no notification is posted (fails quiet). If a signal matches rows that are read, they announce once, then the baseline holds them. |
+| Readiness | `inboxState` is posted when `document.readyState` is `complete` (or `ready` was sent), not on `ready` itself, and from a dedicated `MutationObserver` and window `load` (the shared chrome scan runs from `requestAnimationFrame`, which a hidden web view may not get) | n/a | The probe times out after 20 s and changes nothing. |
+| Throttle | At most one scan per second; a post only when the thread list (ids, flags, names) differs from the last post of this document; leaving the inbox route forgets it | n/a (ours) | — |

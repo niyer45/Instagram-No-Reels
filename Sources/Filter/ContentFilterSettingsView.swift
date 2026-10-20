@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 struct ContentFilterSettingsView: View {
     @ObservedObject var status: FilterStatus
     @ObservedObject var following: FollowingStore
+    @ObservedObject var messages: MessageNotifications
     let actions: Actions
 
     /// Shell actions the sheet triggers; each dismisses the sheet first where appropriate.
@@ -64,6 +65,24 @@ struct ContentFilterSettingsView: View {
                     }
                 } header: { header("Optional following-list fallback") } footer: {
                     footer("Use the JSON following list from your Instagram information export. Reimport it after following or unfollowing accounts. Fresh negative follow status from Instagram takes priority over an older imported list.")
+                }
+
+                Section {
+                    Toggle(isOn: Binding(get: { messages.enabled }, set: { on in Task { await messages.setEnabled(on) } })) {
+                        HStack(spacing: 12) {
+                            icon("bell")
+                            Text("Message notifications").font(.system(size: 15))
+                        }
+                    }
+                    .tint(Self.link)
+                    .listRowBackground(rowBackground)
+                } header: { header("Message notifications") } footer: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        footer("iOS checks for new messages in the background every so often, usually within an hour. Notifications are not instant.")
+                        if messages.permissionDenied {
+                            footer("Notifications are turned off for this app. Allow them in the Settings app, then try again.")
+                        }
+                    }
                 }
 
                 Section {

@@ -859,6 +859,7 @@ function scanTabs(){
  if(role!=='page')return;
  try{const kind=tabPageKind();tabScanPrompts();
   if(kind==='search')tabScanSearch();else if(kind==='activity')tabScanActivity();else if(kind==='profile'){tabScanProfile();tabScanProfileTopBar();}
+  else if(kind==='inbox')tabInboxQueue();
  }catch(_){}
 }
 if(role==='page')window.__instagramTabs=Object.freeze({
@@ -867,6 +868,71 @@ if(role==='page')window.__instagramTabs=Object.freeze({
  cancelSearch(){tabCancelSearch();return true;},
  hasSearchField(){return !!document.querySelector(TAB_SEARCH);}
 });
+// Messages inbox (message notifications): thread rows -> `inboxState {threads:[{id,unread,name}]}` for native.
+// Runs on the visible Messages tab and in the hidden background-refresh web view (which never reaches `ready`
+// reliably, so it depends on the document being complete, not on readiness). Unread signals, in order, with
+// fallbacks in docs/DOM-NOTES.md: an "unread" label, a small solid blue dot, a bold preview line.
+const INBOX_INTERVAL_MS=1000,INBOX_MAX_THREADS=50,INBOX_NAME_MAX=80,INBOX_LEAF_LIMIT=40;
+const INBOX_UNREAD_LABEL=/\bunread\b/i;
+let inboxAt=-Infinity,inboxQueued=false,inboxKey='';
+/** The thread id a row link opens (`/direct/t/<id>/`), or null. */
+function inboxThreadID(link){const href=link&&link.getAttribute&&link.getAttribute('href');if(!href)return null;
+ try{const u=new URL(href,'https://www.instagram.com');if(!HOSTS.includes(u.hostname))return null;
+  const m=u.pathname.match(/^\/direct\/t\/([A-Za-z0-9_.-]{1,64})\/?$/);return m?m[1]:null;}catch(_){return null;}}
+/** Text-bearing leaf elements of a row in document order (no icons, scripts or styles). */
+function inboxLeaves(row){
+ const out=[];const nodes=(row.children&&row.children.length)?Array.from(row.querySelectorAll('*')):[row];
+ for(const node of nodes){if(out.length>=INBOX_LEAF_LIMIT)break;
+  if((node.children&&node.children.length>0)||/^(svg|img|script|style|path)$/i.test(node.tagName||''))continue;
+  if(tabText(node))out.push(node);}
+ return out;}
+/** The row of a thread link: the link itself when it holds the text, else the nearest ancestor holding only this thread link. */
+function inboxRow(link){
+ let row=link;
+ for(let depth=0;depth<5&&inboxLeaves(row).length===0&&row.parentElement&&row.parentElement!==document.body;depth++){
+  const parent=row.parentElement;if(Array.from(parent.querySelectorAll('a[href*="/direct/t/"]')).length>1)break;row=parent;}
+ return row;}
+function inboxWeight(node){const w=typeof getComputedStyle==='function'?String(getComputedStyle(node).fontWeight||''):'';
+ return /^bold/i.test(w)?700:(parseInt(w,10)||0);}
+function inboxUnread(row,leaves){
+ // 1. An explicit label: aria-label/title containing "unread" on the row or any descendant, or a leaf reading just "Unread".
+ for(const node of [row,...Array.from(row.querySelectorAll('[aria-label],[title]'))]){
+  if(INBOX_UNREAD_LABEL.test((node.getAttribute('aria-label')||'')+' '+(node.getAttribute('title')||'')))return true;}
+ if(leaves.some(leaf=>/^(\d+\s+)?unread( messages?)?$/i.test(tabText(leaf))))return true;
+ // 2. A small solid blue dot (Instagram blue, about 8 px) with no children.
+ if(typeof getComputedStyle==='function')for(const node of row.querySelectorAll('div,span,i')){
+  if(node.children&&node.children.length>0)continue;const r=tabRect(node);
+  if(r.width<4||r.width>16||r.height<4||r.height>16||Math.abs(r.width-r.height)>2)continue;
+  const rgb=opaqueRGB(getComputedStyle(node).backgroundColor);if(rgb&&rgb[2]>=200&&rgb[2]>rgb[0]+60&&rgb[2]>rgb[1])return true;}
+ // 3. A bold preview line: the second text leaf (after the title) at weight 600 or more.
+ return leaves.length>=2&&inboxWeight(leaves[1])>=600;}
+/** Thread rows of the inbox in order: first row per thread id, at most INBOX_MAX_THREADS. */
+function tabScanInbox(){
+ const threads=[],seen=new Set();
+ for(const link of document.querySelectorAll('a[href*="/direct/t/"]')){
+  if(threads.length>=INBOX_MAX_THREADS)break;
+  const id=inboxThreadID(link);if(!id||seen.has(id)||link.closest('[data-native-hidden]'))continue;seen.add(id);
+  const row=inboxRow(link),leaves=inboxLeaves(row);
+  threads.push({id,unread:inboxUnread(row,leaves),name:Array.from(leaves.length?tabText(leaves[0]):'').slice(0,INBOX_NAME_MAX).join('').trim()});
+ }
+ return threads;}
+function tabPostInbox(){
+ inboxAt=now();if(role!=='page'||classify(location.pathname).kind!=='inbox')return;
+ if(!(readySent||document.readyState==='complete'))return;
+ const threads=tabScanInbox();if(!threads.length)return;
+ const key=JSON.stringify(threads);if(key===inboxKey)return;inboxKey=key;post('inboxState',{threads});}
+/** Throttled to one scan per INBOX_INTERVAL_MS; leaving the inbox forgets the last state so re-entering reports again. */
+function tabInboxQueue(){
+ if(role!=='page')return;
+ if(classify(location.pathname).kind!=='inbox'){inboxKey='';return;}
+ if(inboxQueued)return;
+ const wait=inboxAt+INBOX_INTERVAL_MS-now();
+ if(wait<=0){tabPostInbox();return;}
+ inboxQueued=true;setTimeout(()=>{inboxQueued=false;tabPostInbox();},wait);}
+// Its own observer: the shared chrome scan runs from requestAnimationFrame, which a hidden web view may not get.
+// `load` too: rows rendered before the document completes would otherwise wait for a later mutation.
+if(role==='page'&&typeof MutationObserver==='function')new MutationObserver(tabInboxQueue).observe(document,{childList:true,subtree:true});
+if(role==='page')window.addEventListener('load',tabInboxQueue);
 // --- end Tabs ---
 
 let chromeQueued=false;

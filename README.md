@@ -10,6 +10,7 @@ Sign in with your existing Instagram account through Instagram’s own page. Thi
 - **Following-first Home:** native Home header with Instagram’s wordmark, and Instagram’s Stories tray above posts from followed accounts.
 - **Local content filters:** hides recognized Reels, ads, suggestions, and Home posts without followed-account evidence.
 - **Stories and Messages:** Instagram’s signed-in story viewer opens full screen; Notifications push from the Home header heart (with an unread dot).
+- **Message notifications (optional, off by default):** a local notification for a new direct message, found by a background check of the inbox. iOS decides when it runs, so they are delayed, not instant.
 - **Account search:** preserves Instagram’s search bar and account results while hiding the Explore media grid. A native caught-up state appears only while Search is idle and disappears on interaction or focus.
 - **Retained tabs:** Home, Search, Messages and your Profile keep their pages and scroll positions during tab visits. Tapping the selected tab scrolls to top, then pops to its root, then reloads.
 - **Stable refresh:** pull-to-refresh holds the released pull distance until the replacement feed is ready, then settles the header, Stories, and posts together.
@@ -101,6 +102,7 @@ The simulator cannot sign in to Instagram, so signed-in behaviour is validated o
 - The caught-up feed marker requires dated eligible content. Missing timestamps or a network failure do not prove that all recent posts have loaded.
 - Pagination uses Instagram’s existing page handlers and available content; it cannot guarantee an unlimited feed.
 - Live tab state is retained within the running app session. A terminated web-content process reloads the page behind its skeleton, and a page unloaded to save memory reloads when shown; Instagram may then show newer content than before, and the scroll position is restored only as far as the reloaded page reaches.
+- Message notifications depend on iOS background app refresh: iOS runs the check every so often (usually within an hour, sometimes much later or not at all, and not after a force quit or with Background App Refresh or Low Power Mode off). They are not instant, and detection depends on Instagram’s inbox markup.
 - Instagram’s website has no create-post route, so the native Create tab is replaced by Messages.
 
 ## Project layout

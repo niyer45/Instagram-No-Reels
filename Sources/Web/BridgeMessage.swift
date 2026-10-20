@@ -17,6 +17,7 @@ enum BridgeMessage: Equatable {
     case searchFocus
     case wordmark(WordmarkShape)
     case openControls
+    case inboxState([InboxThread])
 
     private struct Envelope: Decodable { let type: String }
     private struct RouteBody: Decodable { let path: String; let search: String; let title: String? }
@@ -27,6 +28,7 @@ enum BridgeMessage: Equatable {
     private struct OpenBody: Decodable { let open: Bool }
     private struct TrayBody: Decodable { let height: Double; let items: Int }
     private struct TopBody: Decodable { let top: Double }
+    private struct InboxBody: Decodable { let threads: [InboxThread] }
     private struct IdleBody: Decodable { let idle: Bool; let top: Double }
 
     private static let maximumBytes = 128 * 1024
@@ -74,6 +76,9 @@ enum BridgeMessage: Equatable {
             return read(WordmarkShape.self).flatMap { $0.isValid ? .wordmark($0) : nil }
         case "openControls":
             return .openControls
+        case "inboxState":
+            guard let value = read(InboxBody.self), InboxThread.isValid(value.threads) else { return nil }
+            return .inboxState(value.threads)
         default:
             return nil
         }

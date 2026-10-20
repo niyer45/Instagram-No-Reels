@@ -42,6 +42,8 @@ import Foundation
         try RouteChecks.run { check($0, $1) }
         let routeChecks = checks - policyChecks
         SVGPathChecks.run { check($0, $1) }
-        print("Passed \(policyChecks) following-import and navigation checks, \(routeChecks) route-table checks and \(checks - policyChecks - routeChecks) SVG path checks.")
+        let svgChecks = checks - policyChecks - routeChecks
+        InboxChecks.run { check($0, $1) }
+        print("Passed \(policyChecks) following-import and navigation checks, \(routeChecks) route-table checks, \(svgChecks) SVG path checks and \(checks - policyChecks - routeChecks - svgChecks) inbox checks.")
     }
 }

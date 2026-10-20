@@ -10,7 +10,10 @@ import SafariServices
 @MainActor
 final class Router {
     weak var environment: AppEnvironment? { didSet { observeSession() } }
-    weak var shell: RootTabBarController?
+    weak var shell: RootTabBarController? { didSet { if shell != nil { openPendingMessages() } } }
+    /// A notification tap that arrived before the shell existed (cold launch): `thread` nil means just the Messages tab.
+    private var pendingMessages: PendingMessages?
+    private struct PendingMessages { let thread: String? }
     private var sessionObservation: AnyCancellable?
     private var lastSession: AccountStore.Session?
 
@@ -85,9 +88,39 @@ final class Router {
             return SearchPageViewController(environment: environment, url: url, placement: placement)
         case .tabRoot(.profile):
             return ProfilePageViewController(environment: environment, url: url, placement: placement)
+        case .tabRoot(.messages):
+            let page = WebPageViewController(environment: environment, url: url, placement: placement)
+            #if DEBUG
+            // The signed-in inbox markup has never been observed: capture its outline when the tab's page is ready.
+            page.onReady = { [weak page] in
+                guard let page, page.route.kind == .inbox, !page.isLoginContent else { return }
+                MessageWatcher.captureOutline(of: page.webView, source: "tab")
+            }
+            #endif
+            return page
         default:
             return WebPageViewController(environment: environment, url: url, placement: placement)
         }
+    }
+
+    // MARK: Message notifications
+
+    /// A tapped message notification: the Messages tab, and the thread when its id is valid.
+    func openMessages(thread: String?) {
+        let thread = thread.flatMap { InboxThread.isValidID($0) ? $0 : nil }
+        guard shell != nil else { pendingMessages = PendingMessages(thread: thread); return }
+        if let thread, let url = URL(string: "https://www.instagram.com/direct/t/\(thread)/") {
+            open(url, from: nil)
+        } else {
+            shell?.select(.messages, popToRoot: true)
+        }
+    }
+
+    private func openPendingMessages() {
+        guard let pending = pendingMessages else { return }
+        pendingMessages = nil
+        // The shell is registered while it is being built; give the scene a moment to put it on screen.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.openMessages(thread: pending.thread) }
     }
 
     // MARK: External links
@@ -186,7 +219,7 @@ final class Router {
                 environment.signOut { shell?.resetTabs() }
             },
             dismiss: { sheet?.dismiss(animated: true) })
-        let controller = UIHostingController(rootView: ContentFilterSettingsView(status: environment.filterStatus, following: environment.following, actions: actions))
+        let controller = UIHostingController(rootView: ContentFilterSettingsView(status: environment.filterStatus, following: environment.following, messages: environment.messages, actions: actions))
         sheet = controller
         presenter.present(controller, animated: true)
     }

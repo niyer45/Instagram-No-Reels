@@ -160,6 +160,30 @@ The simulator checks used the logged-out pages and `Tests/fixtures/home-feed.htm
 - [ ] The Content filters sheet also opens from the Profile menu; it shows dark inset groups with outline icons.
 - [ ] In the sheet, counts update, "Reload Home" reloads the feed, and Import following.json, Remove imported list, Sign in and Sign out (with confirmation) all work; importing and removing `following.json` changes filtering without restarting.
 
+## Message notifications
+
+Needs a second Instagram account to send you messages. The Debug build can run one check at once: launch it with
+`SHELL_INBOX_CHECK=1` (Xcode scheme, Arguments, Environment Variables); it checks four seconds after launch and shows
+its notifications while the app is open.
+
+- [ ] Content filters sheet: "Message notifications" is off by default, with the note "iOS checks for new messages in the background every so often, usually within an hour. Notifications are not instant."
+- [ ] Turning it on shows the iOS permission prompt. Allow: the toggle stays on. Refuse: the toggle stays off and the sheet says where to allow it.
+- [ ] Existing unread messages at the moment you turn it on do not produce notifications later.
+- [ ] Immediate check (Debug, `SHELL_INBOX_CHECK=1`): send yourself a message from the other account, launch, wait about 10 s: a banner "New message from <name>" appears while the app is open. Report what happens if it shows "New message" without a name, or never appears.
+- [ ] Background: with the toggle on, send a message from the other account, background the app (Home), and wait; a notification appears, usually within an hour (note how long it took; Background App Refresh and Low Power Mode must allow it).
+- [ ] Tapping the notification opens the Messages tab with that thread pushed (from the lock screen, from the app in the background, and after force quitting the app).
+- [ ] With the app open on the Messages tab, a new message does not produce a notification, and after leaving the app no notification arrives for threads you already saw.
+- [ ] Turning the toggle off stops notifications (send another message and wait).
+- [ ] Sign out: no notifications arrive afterwards, and signing back in with the toggle still on starts again without announcing old unread threads.
+- [ ] The Debug build writes `page-outline-inbox-ready-<n>.json` (Library/Caches) after a check or opening Messages; if notifications are wrong, send that file (structure only, no text) together with `filter-diagnostics.json` so the unread selectors can be corrected. The outline shows row structure only (labels masked, no font weights or colours), so also note how many unread threads the inbox showed.
+- [ ] Detection: after a Debug check, the latest `inbox-check` event in `filter-diagnostics.json` has an `unread` count equal to the number of unread threads the inbox shows (0 when all are read).
+- [ ] **Background WebKit (unverified, decides whether the feature works at all):** run the Debug build from Xcode, turn the toggle on, send yourself a message, press Home, pause in the debugger and run `e -l objc -- (void)[[BGTaskScheduler sharedScheduler] _simulateLaunchForTaskWithIdentifier:@"com.local.following.inbox-refresh"]`, then continue. Within about 25 s the last `inbox-check` event shows `mode` `background`: `completed` (with `new` 1 and a notification) means the hidden web view ran in the background; `timed-out` means WebKit suspended it and background notifications cannot work as built. Note the event's `scene` value (1: the app's window existed).
+- [ ] Same check from a real refresh, not simulated: leave the toggle on overnight with the app in the background (not force quit) and read the `inbox-check` events the next morning (`scene` 0 is a launch without a window).
+- [ ] Reply after reading: tap a message notification (or open the thread in the app), read it, press Home, then send another message to the same thread from the other account and background-wait: a second notification arrives at the next check.
+- [ ] A thread you saw unread in the Messages list while the app was open (without opening it) is not announced after you leave the app.
+- [ ] Turning notifications off for the app in iOS Settings after enabling the toggle: the toggle still shows on and nothing is announced (checks run and skip); allowing them again resumes without turning the toggle off and on.
+- [ ] Launch: Home still adopts the pre-warmed web view (the Debug `launch-timing.json` in Library/Caches lists `home-prewarm` right after `scene`), and the first page is the feed with working links.
+
 ## Offline and recovery
 
 ### Loading

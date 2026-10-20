@@ -2,7 +2,7 @@ import UIKit
 import WebKit
 
 /// Shared app state and services: stores, theme, connectivity, web view factory and router.
-/// Created once at launch by AppDelegate, which also pre-warms Home's web view through it.
+/// Created once at launch by AppDelegate; SceneDelegate pre-warms Home's web view through it.
 @MainActor
 final class AppEnvironment {
     /// Returning from the background after at least this long refreshes Home, like the native
@@ -16,9 +16,11 @@ final class AppEnvironment {
     let connectivity = Connectivity()
     let webFactory: WebPageFactory
     let router = Router()
+    let messages: MessageNotifications
 
     init() {
         webFactory = WebPageFactory(following: following, theme: theme)
+        messages = MessageNotifications(factory: webFactory, account: account)
         router.environment = self
     }
 
@@ -30,7 +32,7 @@ final class AppEnvironment {
         return Self.foregroundRefreshInterval
     }
 
-    /// Starts WebKit and Home's document before the scene and shell exist, so the slow part of a
+    /// Starts WebKit and Home's document as the scene connects, before the shell exists, so the slow part of a
     /// launch (web content and networking processes, the first request) overlaps building the UI.
     /// Home's page adopts the web view when it is created (`WebPageFactory.makeWebView`).
     func prewarmHome() {
@@ -60,6 +62,7 @@ final class AppEnvironment {
             Task { @MainActor in
                 self?.account.clear()
                 self?.filterStatus.reset()
+                self?.messages.signedOut()
                 completion()
             }
         }
