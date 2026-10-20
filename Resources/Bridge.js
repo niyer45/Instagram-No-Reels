@@ -165,7 +165,28 @@ function outlineMarks(doc,indexOf,env){
   marks[k]={i:indexOf(node),tag:String(node.tagName||'').toLowerCase(),pos:css.position,rect:[r.x,r.y,r.width,r.height].map(v=>Math.round(Number(v)||0))};}
  return marks;
 }
-if(typeof module!=='undefined'&&module.exports){module.exports={classify,decide,readiness,official,opaqueRGB,surfaceRGB,avatarURL,shapePath,hrefShape,safeLabel,outlineTree,outlineMarks};return;}
+/** Extra DEBUG outline sections: `main` (outline rooted at <main>) and `bars` (nav/header/navigation and fixed/sticky elements, small subtrees).
+    `bodyTree`/`bodyIndexes` come from the body outline made with the same env. Same sanitizer, so no text, no raw URLs. */
+function outlineSections(doc,env,bodyTree,bodyIndexes){
+ const mainNode=doc.querySelector('main'),mainIndexes=new Map();
+ const mainTree=mainNode?outlineTree(mainNode,{...env,indexes:mainIndexes,maxNodes:400,maxDepth:12}):null;
+ const picked=new Map(),add=(node,kind)=>{if(picked.size<12&&!picked.has(node))picked.set(node,kind);};
+ for(const node of doc.querySelectorAll('nav,header,[role="navigation"]')){
+  if(node.closest&&node.closest('article'))continue;
+  add(node,String(node.tagName||'').toLowerCase()==='header'?'header':'nav');
+ }
+ const fromOutline=(tree,indexes)=>{if(!tree||!indexes)return;
+  for(const [node,i] of indexes){const e=tree.nodes[i];if(e&&(e.pos==='fixed'||e.pos==='sticky'))add(node,e.pos);}};
+ fromOutline(bodyTree,bodyIndexes);fromOutline(mainTree,mainIndexes);
+ const bars=[];
+ for(const [node,kind] of picked){
+  const css=env.styleOf(node)||{},r=env.rectOf(node)||{},hidden=node.getAttribute('data-native-hidden');
+  bars.push({kind,rect:[r.x,r.y,r.width,r.height].map(v=>Math.round(Number(v)||0)),pos:css.position,hidden:hidden||null,
+   nodes:outlineTree(node,{...env,indexes:undefined,maxNodes:60,maxDepth:6}).nodes});
+ }
+ return {main:mainTree,bars};
+}
+if(typeof module!=='undefined'&&module.exports){module.exports={classify,decide,readiness,official,opaqueRGB,surfaceRGB,avatarURL,shapePath,hrefShape,safeLabel,outlineTree,outlineMarks,outlineSections};return;}
 if(window.top!==window||!official(location.href))return;
 
 const boot=window.__instagramBoot||{};const role=boot.role==='tray'?'tray':'page';
@@ -196,10 +217,10 @@ window.__instagram=Object.freeze({
  /** DEBUG diagnostics: sanitized structure of the page (see outlineTree); null in the tray. */
  outline(){if(role!=='page')return null;
   try{const root=document.documentElement,css=getComputedStyle.bind(window),env={styleOf:n=>css(n),rectOf:n=>n.getBoundingClientRect(),indexes:new Map()};
-   const tree=outlineTree(document.body,env),prop=k=>root.style.getPropertyValue(k),q=hrefShape('/'+location.search)||'';
+   const tree=outlineTree(document.body,env),sections=outlineSections(document,env,tree,env.indexes),prop=k=>root.style.getPropertyValue(k),q=hrefShape('/'+location.search)||'';
    return {route:{kind:classify(location.pathname).kind,search:q.includes('?')?q.slice(q.indexOf('?')):''},viewport:{w:window.innerWidth,h:window.innerHeight},scroll:{x:Math.round(window.scrollX),y:Math.round(window.scrollY)},documentHeight:Math.round(root.scrollHeight),
     layout:{headerHeight:prop('--native-header-height'),storiesHeight:prop('--native-stories-height'),chrome:root.getAttribute('data-native-chrome'),page:root.getAttribute('data-native-page'),stories:root.getAttribute('data-native-stories'),refreshing:root.getAttribute('data-native-refreshing')!==null},
-    marks:outlineMarks(document,n=>env.indexes.has(n)?env.indexes.get(n):-1,env),outline:tree.nodes,truncated:tree.truncated};
+    marks:outlineMarks(document,n=>env.indexes.has(n)?env.indexes.get(n):-1,env),outline:tree.nodes,truncated:tree.truncated,main:sections.main,bars:sections.bars};
   }catch(_){return {error:'exception'};}},
  post,
  get currentPolicy(){return policy;}
@@ -354,9 +375,22 @@ function findBanners(){
 // when the native header collapses (scroll) and in the pull-to-refresh gap. Seeds on the "Following" label, then on
 // whatever fixed/sticky full-width bar sits at the viewport top. Marked "following-bar" (not "header", which would stop
 // findTopBar from finding the wordmark header). Selector notes: docs/DOM-NOTES.md.
-const BAR_STOP='main,article,input,textarea,[role="combobox"],a[href^="/stories/"],a[href^="https://www.instagram.com/stories/"],[data-following-approved],[data-instagram-stories-slot],img,video';
+const BAR_STOP='main,article,[role="combobox"],a[href^="/stories/"],a[href^="https://www.instagram.com/stories/"],[data-following-approved],[data-instagram-stories-slot],img,video';
 const BAR_SKIP='article,[data-following-approved],[role="dialog"],[role="menu"],[data-native-hidden]';
-let followingBar=null,lastBarSearch=-Infinity,lastBarProbe=-Infinity;
+let followingBar=null,lastBarSearch=-Infinity,lastBarProbe=-Infinity,barTimer=0;
+// A subtree blocks the Following-bar match when it holds a stop element or a RENDERED text field (hidden / zero-size inputs,
+// e.g. the display:none forms inside the observed bar, do not block).
+function barBlocked(node){
+ if(node.querySelector(BAR_STOP))return true;
+ for(const el of node.querySelectorAll('input,textarea')){
+  const type=String(el.getAttribute('type')||'').toLowerCase();
+  if(el.tagName.toLowerCase()==='input'&&(type==='hidden'||type==='file'||type==='checkbox'||type==='radio'))continue;
+  const r=el.getBoundingClientRect();if(!(r.width>0&&r.height>0))continue;
+  const cs=getComputedStyle(el);if(cs.display==='none'||cs.visibility==='hidden')continue;
+  return true;
+ }
+ return false;
+}
 function isHome(){return classify(location.pathname).kind==='home';}
 function barScrollY(){return Number(window.scrollY)||Number(window.pageYOffset)||0;}
 function barQualifies(node,fixedOnly){
@@ -382,18 +416,40 @@ function findFollowingBarByPoint(){
   for(const el of stack){
    let node=el;
    for(let depth=0;node&&depth<8&&node!==document.body&&node!==document.documentElement;depth++,node=node.parentElement){
-    if(node.querySelector(BAR_STOP))break;
+    if(barBlocked(node))break;
     if(barQualifies(node,true))return node;
    }
   }
  }
  return null;
 }
+const NAV_SEL='nav,[role="navigation"]';
+function navPrecedesMain(nav){
+ for(let sib=nav.nextElementSibling;sib;sib=sib.nextElementSibling){if(String(sib.tagName).toLowerCase()==='main'||sib.querySelector('main'))return true;}
+ return false;
+}
+function navOk(nav){return !nav.closest(BAR_SKIP)&&!barBlocked(nav)&&navPrecedesMain(nav)&&barQualifies(nav,false);}
+// The in-flow nav placeholder (45 px) that wraps the fixed bar must be the marked node, else it stays as a blank strip.
+function upgradeToNav(node){
+ if(!node||String(node.tagName).toLowerCase()==='nav')return node;
+ let nav=node.parentElement;
+ for(let depth=0;nav&&depth<8&&nav!==document.body&&nav!==document.documentElement;depth++,nav=nav.parentElement){
+  if(nav.matches(NAV_SEL)&&navOk(nav)){
+   node.removeAttribute('data-native-hidden');node.removeAttribute('data-native-bar-height');
+   return markFollowingBar(nav);
+  }
+ }
+ return node;
+}
 function findFollowingBar(){
  if(!layout.hideChrome||typeof getComputedStyle!=='function')return null;
- if(followingBar&&followingBar.isConnected&&followingBar.getAttribute('data-native-hidden')==='following-bar')return followingBar;
+ if(followingBar&&followingBar.isConnected&&followingBar.getAttribute('data-native-hidden')==='following-bar')return followingBar=upgradeToNav(followingBar);
  followingBar=null;
- const marked=document.querySelector('[data-native-hidden="following-bar"]');if(marked){followingBar=marked;return marked;}
+ const marked=document.querySelector('[data-native-hidden="following-bar"]');if(marked){followingBar=upgradeToNav(marked);return followingBar;}
+ // Structural nav seed first: an in-flow nav above the feed (observed: section > nav 402x45 before main, wrapping the fixed bar).
+ for(const nav of document.querySelectorAll(NAV_SEL)){
+  if(navOk(nav))return markFollowingBar(nav);
+ }
  const seeds=[];
  for(const el of document.querySelectorAll('span,h1,h2,p,div,[aria-label="Following"]')){
   if(el.getAttribute('aria-label')==='Following'){seeds.push(el);continue;}
@@ -403,23 +459,28 @@ function findFollowingBar(){
   if(seed.closest(BAR_SKIP))continue;
   let best=null,node=seed;
   for(let depth=0;node&&depth<=8&&node!==document.body&&node!==document.documentElement;depth++,node=node.parentElement){
-   if(node.querySelector(BAR_STOP))break;
+   if(barBlocked(node))break;
    if(barQualifies(node,false))best=node;
   }
-  if(best)return markFollowingBar(best);
+  if(best)return markFollowingBar(upgradeToNav(best));
  }
  const byPoint=findFollowingBarByPoint();
- return byPoint?markFollowingBar(byPoint):null;
+ return byPoint?markFollowingBar(upgradeToNav(byPoint)):null;
 }
 function scanFollowingBar(){
  if(!layout.hideChrome||!isHome())return;
- if(followingBar&&followingBar.isConnected&&followingBar.getAttribute('data-native-hidden')==='following-bar')return;
- const t=now();if(t>lastBarSearch&&t-lastBarSearch<300)return;lastBarSearch=t;
+ if(followingBar&&followingBar.isConnected&&followingBar.getAttribute('data-native-hidden')==='following-bar'){followingBar=upgradeToNav(followingBar);return;}
+ const t=now();
+ if(t>lastBarSearch&&t-lastBarSearch<300){
+  if(!barTimer)barTimer=setTimeout(()=>{barTimer=0;scanFollowingBar();},Math.max(0,300-(t-lastBarSearch))+1);
+  return;
+ }
+ lastBarSearch=t;
  findFollowingBar();
 }
 function probeFollowingBar(){
  if(!layout.hideChrome||!isHome()||(followingBar&&followingBar.isConnected))return;
- const t=now();if(t>lastBarProbe&&t-lastBarProbe<250)return;lastBarProbe=t;
+ const t=now();if(t>lastBarProbe&&t-lastBarProbe<100)return;lastBarProbe=t;
  const node=findFollowingBarByPoint();if(node)markFollowingBar(node);
 }
 

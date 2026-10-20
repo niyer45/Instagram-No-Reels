@@ -53,9 +53,9 @@ class El{
 const h=(tag,attrs,children,opts)=>new El(tag,attrs||{},children||[],opts||{});
 
 // Home web "Following" bar detection (Resources/Bridge.js findFollowingBar), against the fake DOM above (copied from tabs.test.cjs).
-function page(pathname,build,{search='',headerHeight=44,scrollY=0}={}){
+function page(pathname,build,{search='',headerHeight=44,scrollY=0,manual=false}={}){
  const html=h('html'),body=h('body');html.appendChild(body);
- const listeners={},frames=[],posted=[];
+ const listeners={},frames=[],posted=[],timers=[],clock={t:0};
  let stack=()=>[];
  const document={documentElement:html,body,readyState:'complete',title:'Instagram',activeElement:body,
   querySelector:s=>html.querySelector(s),querySelectorAll:s=>html.querySelectorAll(s),createElement:t=>h(t),
@@ -66,10 +66,10 @@ function page(pathname,build,{search='',headerHeight=44,scrollY=0}={}){
   addEventListener(k,f){(listeners['win:'+k]=listeners['win:'+k]||[]).push(f);}};
  window.top=window;
  const context={window,document,location,history:{pushState(){},replaceState(){}},URL,WeakSet,Event:class{constructor(type){this.type=type;}},
-  setTimeout:f=>{f();return 0;},requestAnimationFrame:f=>frames.push(f),performance:{now:()=>0},
-  getComputedStyle:n=>({display:'block',visibility:'visible',opacity:'1',position:n.css.position||'static',backgroundColor:'rgba(0, 0, 0, 0)',pointerEvents:'auto',paddingBottom:'0px',paddingTop:n.css.paddingTop||'0px',height:'auto'}),
+  setTimeout:f=>{if(manual){timers.push(f);return timers.length;}f();return 0;},requestAnimationFrame:f=>frames.push(f),performance:{now:()=>clock.t},
+  getComputedStyle:n=>({display:n.css.display||'block',visibility:'visible',opacity:'1',position:n.css.position||'static',backgroundColor:'rgba(0, 0, 0, 0)',pointerEvents:'auto',paddingBottom:'0px',paddingTop:n.css.paddingTop||'0px',height:'auto'}),
   MutationObserver:class{constructor(f){listeners.mutation=f;}observe(){}}};
- const api={html,body,document,window,listeners,setStack:f=>{stack=f;}};
+ const api={clock,timers,html,body,document,window,listeners,setStack:f=>{stack=f;}};
  build(body,api);
  vm.runInNewContext(source,context);
  api.flush=()=>{for(let i=0;i<3;i++){const run=frames.splice(0);for(const f of run)f();}};
@@ -183,4 +183,99 @@ test('an empty sibling of the hidden fixed bar with the bar\'s height is marked 
  assert.equal(mark(p.body.children[1]),'following-spacer');
  assert.equal(mark(p.body.children[2]),null,'different height');
  assert.equal(mark(p.body.children[3]),null);
+});
+
+// --- Structural nav seed (observed on the signed-in iPhone: section > nav 402x45 relative at top 44, before main). ---
+function navFixture({navTop=44,navChildren,withMain=true}={}){
+ return (body,api)=>{
+  const nav=h('nav',{},navChildren||[h('div',{},[h('button',{},[h('svg',{})],{rect:{top:50,width:30,height:30}})],{rect:{top:44,width:200,height:45}})],{rect:{top:navTop,left:0,width:390,height:45},css:{position:'relative'}});
+  const main=h('main',{},[h('article',{},[h('span',{},[],{text:'post'})],{rect:{top:89,width:390,height:500}})],{rect:{top:89,width:390,height:1200}});
+  const section=h('section',{},withMain?[nav,main]:[nav,h('div',{},[h('span')])],{rect:{top:44,width:390,height:1300}});
+  const tabbar=h('div',{'data-native-hidden':'tabbar'},[h('nav',{},[h('a',{href:'/'})],{rect:{top:790,width:390,height:54},css:{position:'fixed'}})],{rect:{top:790,width:390,height:54},css:{position:'fixed'}});
+  body.appendChild(h('div',{},[tabbar,section]));
+  Object.assign(api,{nav,main,section,tabbar});
+ };
+}
+test('a text-less in-flow nav right before main is marked as the Following bar',()=>{
+ const p=home(navFixture());
+ assert.equal(mark(p.nav),'following-bar');
+ assert.equal(mark(p.main),null);assert.equal(mark(p.main.children[0]),null);
+ assert.equal(mark(p.tabbar),'tabbar');
+});
+test('nav seed negatives: in an article, not before main, far down, with an image or stories link, web tab bar',()=>{
+ const unmarked=p=>assert.equal(p.html.querySelector('[data-native-hidden="following-bar"]'),null);
+ unmarked(home((body)=>{
+  const nav=h('nav',{},[],{rect:{top:44,width:390,height:45}});
+  body.appendChild(h('article',{},[nav,h('main',{},[h('div')])],{rect:{top:44,width:390,height:600}}));
+ }));
+ unmarked(home(navFixture({withMain:false})));
+ unmarked(home(navFixture({navTop:900})));
+ unmarked(home(navFixture({navChildren:[h('img',{src:'x'})]})));
+ unmarked(home(navFixture({navChildren:[h('a',{href:'/stories/alice/'})]})));
+ unmarked(home((body)=>{
+  body.appendChild(h('main',{},[h('article')],{rect:{top:0,width:390,height:900}}));
+  body.appendChild(h('nav',{},[h('a',{href:'/'})],{rect:{top:790,width:390,height:54},css:{position:'fixed'}}));
+ }));
+});
+
+// --- Observed device structure: nav placeholder > div > fixed header > [h1 title link, right group with hidden forms/inputs]. ---
+function deviceBar({visibleInput=false,withNav=true}={}){
+ return (body,api)=>{
+  const hidden=h('div',{},[h('form',{role:'presentation'},[h('input',{type:'text'},[],{css:{display:'none'}})]),h('form',{role:'presentation'},[h('input',{type:'text'},[],{css:{display:'none'}})])],{css:{display:'none'}});
+  const group=h('div',{},[h('div',{},[h('svg')],{rect:{top:10,left:350,width:24,height:24}}),hidden,...(visibleInput?[h('form',{},[h('input',{type:'text'},[],{rect:{top:4,left:20,width:300,height:36}})],{rect:{top:4,left:20,width:300,height:36}})]:[])],{rect:{top:0,left:200,width:200,height:44}});
+  const title=h('h1',{},[h('div',{},[h('div',{},[h('a',{href:'/'},[],{rect:{top:10,left:20,width:144,height:24}})])])],{rect:{top:10,left:20,width:144,height:24}});
+  const header=h('header',{},[h('div',{},[title,group],{rect:{top:0,width:402,height:44}})],{rect:{top:0,left:0,width:402,height:44},css:{position:'fixed'}});
+  const main=h('main',{},[h('article',{},[h('span',{},[],{text:'post'})],{rect:{top:89,width:402,height:500}})],{rect:{top:89,width:402,height:1200}});
+  let nav=null,section;
+  if(withNav){nav=h('nav',{},[h('div',{},[header])],{rect:{top:44,left:0,width:402,height:45},css:{position:'relative'}});section=h('section',{},[nav,main],{rect:{top:44,width:402,height:1300}});}
+  else section=h('section',{},[h('div',{},[header]),main],{rect:{top:44,width:402,height:1300}});
+  body.appendChild(section);
+  Object.assign(api,{nav,header,main});
+ };
+}
+test('device structure: the nav placeholder holding the fixed header (with hidden inputs) is marked, the feed is not',()=>{
+ const p=page('/',deviceBar(),{search:'?variant=following'});
+ assert.equal(mark(p.nav),'following-bar');
+ assert.equal(mark(p.header),null);assert.equal(mark(p.main),null);assert.equal(mark(p.main.children[0]),null);
+});
+test('device structure with a visible search input is not marked',()=>{
+ const p=page('/',deviceBar({visibleInput:true}),{search:'?variant=following'});
+ assert.equal(p.html.querySelector('[data-native-hidden="following-bar"]'),null);
+});
+test('point fallback finds the fixed header with hidden inputs when there is no nav wrapper',()=>{
+ const p=page('/',(body,api)=>{deviceBar({withNav:false})(body,api);api.setStack(()=>[api.header.children[0],api.header,body]);},{search:'?variant=following'});
+ assert.equal(mark(p.header),'following-bar');
+ assert.equal(mark(p.main),null);
+});
+test('a Following-bar search skipped by the throttle gets one trailing retry',()=>{
+ const p=page('/',(body)=>body.appendChild(h('main',{},[h('article')],{rect:{top:89,width:402,height:900}})),{search:'?variant=following',manual:true});
+ const late=h('div',{},[label('Following')],{rect:{top:0,width:390,height:44},css:{position:'fixed'}});
+ p.body.appendChild(late);
+ p.clock.t=100; // inside the 300 ms window after the first search at t=0
+ p.listeners.mutation();p.flush();p.listeners.mutation();p.flush();
+ assert.equal(mark(late),null,'throttled');
+ assert.equal(p.timers.length,1,'only one pending retry');
+ p.clock.t=500;for(const f of p.timers.splice(0))f();p.flush();
+ assert.equal(mark(late),'following-bar');
+});
+
+// --- Nav upgrade: the in-flow nav wrapping the fixed bar is the marked node, never the inner div. ---
+test('a "Following" label inside the fixed header marks the wrapping nav, not the inner div',()=>{
+ const p=page('/',(body,api)=>{
+  deviceBar()(body,api);
+  const inner=api.header.children[0];api.inner=inner;
+  inner.appendChild(h('span',{},[],{text:'Following',rect:{top:10,left:150,width:60,height:20}}));
+ },{search:'?variant=following'});
+ assert.equal(mark(p.nav),'following-bar');
+ assert.equal(p.nav.getAttribute('data-native-bar-height'),'45');
+ assert.equal(mark(p.inner),null);assert.equal(mark(p.header),null);assert.equal(mark(p.main),null);
+});
+test('an inner div marked by an earlier scan is upgraded to the nav on the next scan',()=>{
+ const p=page('/',(body,api)=>{deviceBar()(body,api);api.inner=api.header.children[0];},{search:'?variant=following'});
+ p.nav.removeAttribute('data-native-hidden');p.nav.removeAttribute('data-native-bar-height');
+ p.inner.setAttribute('data-native-hidden','following-bar');p.inner.setAttribute('data-native-bar-height','44');p.inner.rect={top:0,left:0,width:0,height:0};
+ p.scan();
+ assert.equal(mark(p.nav),'following-bar');
+ assert.equal(p.nav.getAttribute('data-native-bar-height'),'45');
+ assert.equal(mark(p.inner),null);assert.equal(p.inner.getAttribute('data-native-bar-height'),null);
 });

@@ -103,3 +103,26 @@ test('outlineTree honours maxNodes and maxDepth',()=>{
  assert.deepEqual(shallow.nodes.map(n=>n.d),[0,1,2]);
  assert.equal(shallow.nodes[2].n,1);
 });
+
+test('outlineSections yields main and bars sections without leaking text',()=>{
+ const {outlineSections}=require('../Resources/Bridge.js');
+ const { h }=require('./fake-dom.cjs');
+ const nav=h('nav',{'aria-label':"alice's menu"},[h('a',{href:'/alice/'},[],{text:'alice'})],{css:{position:'relative'}});
+ const fixed=h('div',{},[h('span',{},[],{text:'Following'}),h('img',{src:'https://scontent.cdninstagram.com/secret.jpg'})],{css:{position:'fixed'}});
+ const inPost=h('nav',{},[],{});
+ const main=h('main',{},[h('article',{},[inPost,h('a',{href:'/p/ABC123/'},[],{text:'sunset caption'})]),h('div',{},[],{css:{position:'sticky'}})]);
+ const body=h('body',{},[fixed,h('section',{},[nav,main])]);
+ const html=h('html',{},[body]);
+ const env={styleOf:n=>({position:'static',display:'block',visibility:'visible',opacity:'1',top:'auto',zIndex:'auto',...n.css}),rectOf:()=>({x:0,y:44,width:402,height:45}),indexes:new Map()};
+ const bodyTree=outlineTree(body,env);
+ const s=outlineSections(html,env,bodyTree,env.indexes);
+ assert.ok(s.main&&s.main.nodes[0].tag==='main'&&s.main.nodes[0].d===0);
+ const kinds=s.bars.map(b=>b.kind);
+ assert.ok(kinds.includes('nav'));assert.ok(kinds.includes('fixed'));assert.ok(kinds.includes('sticky'));
+ assert.equal(s.bars.length,3,'nav in an article excluded');
+ assert.ok(s.bars.every(b=>b.nodes.length>0&&Array.isArray(b.rect)&&'hidden' in b));
+ const json=JSON.stringify(s);
+ for(const word of ['alice','sunset','caption','ABC123','cdninstagram','secret','scontent'])assert.ok(!json.includes(word),word);
+ const none=outlineSections(h('html',{},[h('body')]),env,{nodes:[]},new Map());
+ assert.equal(none.main,null);assert.deepEqual(none.bars,[]);
+});
