@@ -1,0 +1,351 @@
+/* Native skin, injected at document start into every page web view.
+   Hides Instagram's web chrome (the native shell draws its own), removes web
+   artifacts and styles injected content like the native app. Selector notes and
+   fallbacks: docs/DOM-NOTES.md. Prefer attribute/structural selectors; never
+   Instagram's hashed class names. */
+
+:root {
+  --native-header-height: 0px;
+  --native-stories-height: 0px;
+  color-scheme: light dark;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Web artifacts: tap flashes, long-press callouts, selection of UI text. */
+* { -webkit-tap-highlight-color: transparent !important; }
+html, body {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+input, textarea, select, [contenteditable], [contenteditable] * {
+  -webkit-touch-callout: default;
+  -webkit-user-select: text;
+  user-select: text;
+}
+img, svg, video { -webkit-user-drag: none; }
+
+/* Instagram's website splash and loading screen: native skeletons cover loading. */
+#splash-screen { display: none !important; visibility: hidden !important; }
+
+/* Web chrome that Bridge.js identified structurally (tab bar, top bar, app banners). */
+[data-native-hidden] { display: none !important; }
+/* The element after the hidden fixed top bar reserves the bar's height with padding-top; collapse that
+   strip (Bridge.js markHeaderSpacers). Home's reservation for the native header is the body padding below. */
+[data-native-hidden="header"] + [data-native-header-spacer] { padding-top: 0 !important; }
+
+/* App-store prompts ("Get the app" badges) on the login and logged-out pages. */
+a[href*="apps.apple.com"], a[href*="itunes.apple.com"], a[href^="itms-apps:"] { display: none !important; }
+
+/* Reserve the native header's height in the web layout instead of contentInset,
+   so Instagram's own layout and fixed elements stay stable. */
+html[data-native-chrome="hidden"] body {
+  padding-top: var(--native-header-height) !important;
+  box-sizing: border-box;
+}
+
+/* Stories tray spacer on the Following feed: the native tray sits over it. */
+[data-instagram-stories-slot] { display: block; width: 100%; pointer-events: none; }
+
+/* === Home === */
+/* Native Home feed parity. Dark is the design target; light values follow
+   prefers-color-scheme, which the web view takes from the app appearance (Theme.webStyle;
+   never the window style derived from the page colour). Post-card rules apply only to cards FeedFilter approved on the feed
+   (html[data-following-mode="feed"] [data-following-approved="yes"]) and use ARIA labels,
+   link targets and element names only; anything not reachable that way stays unstyled.
+   Selectors and fallbacks: docs/DOM-NOTES.md, "Home feed skin". */
+:root {
+  --native-text: rgb(245, 245, 245);
+  --native-secondary-text: rgb(168, 168, 168);
+  --native-link-button: rgb(0, 149, 246);
+  --native-separator: rgba(255, 255, 255, 0.1);
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --native-text: rgb(0, 0, 0);
+    --native-secondary-text: rgb(115, 115, 115);
+    --native-separator: rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* Cards: edge to edge, no web card border, 14/18 body text. */
+html[data-following-mode="feed"] [data-following-approved="yes"] {
+  border: 0 !important;
+  border-radius: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  font-size: 14px;
+  line-height: 18px;
+}
+
+/* Header row: 32 pt avatar (alt text "<user>'s profile picture"), 14 pt semibold username,
+   secondary "• time". Location, audio and post links in the header keep Instagram's style. */
+html[data-following-mode="feed"] [data-following-approved="yes"] header img[alt$="profile picture" i] {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 50% !important;
+  object-fit: cover;
+}
+html[data-following-mode="feed"] [data-following-approved="yes"] header a[href]:not(:has(img)):not([href*="/p/"]):not([href*="/explore/"]):not([href*="/audio/"]),
+html[data-following-mode="feed"] [data-following-approved="yes"] header a[href]:not(:has(img)):not([href*="/p/"]):not([href*="/explore/"]):not([href*="/audio/"]) span {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: var(--native-text) !important;
+}
+
+/* Timestamps: 12 pt secondary under the post; 14 pt secondary after the username. */
+html[data-following-mode="feed"] [data-following-approved="yes"] time {
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  line-height: 16px;
+  color: var(--native-secondary-text) !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
+html[data-following-mode="feed"] [data-following-approved="yes"] header time {
+  font-size: 14px !important;
+  line-height: 18px;
+}
+
+/* Action row: 24 pt glyphs (heart, comment, share; bookmark right). Instagram's own buttons
+   keep their 8 pt padding, which gives native's 12 pt inset and 16 pt gaps. */
+html[data-following-mode="feed"] [data-following-approved="yes"] :is(svg[aria-label="Like"], svg[aria-label="Unlike"], svg[aria-label="Comment"], svg[aria-label="Share Post"], svg[aria-label="Share"], svg[aria-label="Save"], svg[aria-label="Remove"]) {
+  width: 24px !important;
+  height: 24px !important;
+}
+
+/* Like count (link to the likers list): 14 pt semibold. */
+html[data-following-mode="feed"] [data-following-approved="yes"] a[href$="/liked_by/"],
+html[data-following-mode="feed"] [data-following-approved="yes"] a[href$="/liked_by/"] span {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: var(--native-text) !important;
+}
+
+/* "View all N comments" (link to the comments page): 14 pt secondary. */
+html[data-following-mode="feed"] [data-following-approved="yes"] a[href$="/comments/"],
+html[data-following-mode="feed"] [data-following-approved="yes"] a[href$="/comments/"] span {
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  color: var(--native-secondary-text) !important;
+}
+
+/* Web-only chrome inside cards: the inline "Add a comment…" field (native opens comments). */
+html[data-following-mode="feed"] [data-following-approved="yes"] form:has(textarea) {
+  display: none !important;
+}
+
+/* "You're all caught up" card injected by FeedFilter: gradient ring with a check mark,
+   20 pt semibold title, 14 pt secondary detail, blue link-style "View older posts". */
+[data-instagram-caught-up] {
+  text-align: center;
+  padding: 40px 24px 32px;
+  color: var(--native-text);
+  border-top: 0.5px solid var(--native-separator);
+  border-bottom: 0.5px solid var(--native-separator);
+  margin: 8px 0;
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+[data-instagram-caught-up] [data-part="icon"] {
+  width: 96px;
+  height: 96px;
+  margin: 0 auto 16px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='1' x2='1' y2='0'%3E%3Cstop stop-color='%23feda75'/%3E%3Cstop offset='.3' stop-color='%23fa7e1e'/%3E%3Cstop offset='.65' stop-color='%23d62976'/%3E%3Cstop offset='1' stop-color='%23962fbf'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='48' cy='48' r='46' fill='none' stroke='url(%23g)' stroke-width='3'/%3E%3Cpath d='M31 49.5l11.5 11.5 22-25' fill='none' stroke='url(%23g)' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+[data-instagram-caught-up] [data-part="title"] {
+  font: 600 20px/25px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  color: var(--native-text);
+  margin: 0 0 6px;
+}
+[data-instagram-caught-up] [data-part="detail"] {
+  font: 400 14px/18px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  color: var(--native-secondary-text);
+  margin: 0 0 14px;
+}
+[data-instagram-caught-up] [data-part="older"] {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0;
+  background: none;
+  color: var(--native-link-button);
+  font: 600 14px/18px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+/* === Search === */
+/* Instagram's search field as the native one: 36 px rounded 10 px grey field, magnifier, 16 px text
+   (16 px also stops WebKit zooming on focus), and a Cancel that slides in on focus or text.
+   Elements are marked by Bridge.js (Tabs); docs/DOM-NOTES.md "Search, Notifications and Profile". */
+:root {
+  --native-field: rgb(239, 239, 239);
+  --native-secondary-text: rgb(115, 115, 115);
+  --native-secondary-button: rgb(239, 239, 239);
+  --native-primary-button: rgb(var(--ig-primary-button, 74, 93, 249));
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --native-field: rgb(37, 41, 46);
+    --native-secondary-text: rgb(168, 168, 168);
+    --native-secondary-button: rgb(37, 41, 46);
+  }
+}
+[data-native-search-row] {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: nowrap !important;
+}
+[data-native-search-field] {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+  padding: 0 8px 0 34px !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  background: var(--native-field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e8e8e' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M19 10.5A8.5 8.5 0 1 1 10.5 2a8.5 8.5 0 0 1 8.5 8.5Z'/%3E%3Cpath d='M16.511 16.511 22 22'/%3E%3C/svg%3E") no-repeat 11px center / 16px 16px !important;
+}
+/* Instagram's own magnifier inside the field (ours is the background above); the clear button stays. */
+[data-native-search-field] svg[aria-label="Search"] { display: none !important; }
+[data-native-search-input] {
+  font: 400 16px/20px -apple-system, BlinkMacSystemFont, system-ui, sans-serif !important;
+  height: 36px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  outline: none !important;
+  background: transparent !important;
+  color: inherit !important;
+  -webkit-appearance: none;
+  appearance: none;
+}
+[data-native-search-input]::placeholder { color: rgb(142, 142, 142) !important; opacity: 1 !important; }
+[data-native-search-cancel] {
+  flex: 0 0 auto;
+  max-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: 400 16px/36px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  white-space: nowrap;
+  transition: max-width 0.2s ease, margin-left 0.2s ease, opacity 0.2s ease;
+}
+html[data-native-search-active="yes"] [data-native-search-cancel] {
+  max-width: 80px;
+  margin-left: 12px;
+  opacity: 1;
+  pointer-events: auto;
+}
+/* Result rows: 44 px avatars (zoomed by Bridge.js), bold username, grey full name; badges untouched. */
+[data-native-search-avatar] img { border-radius: 50% !important; }
+[data-native-search-username] {
+  font: 600 14px/18px -apple-system, BlinkMacSystemFont, system-ui, sans-serif !important;
+  color: inherit !important;
+}
+[data-native-search-secondary] {
+  font: 400 14px/18px -apple-system, BlinkMacSystemFont, system-ui, sans-serif !important;
+  color: var(--native-secondary-text) !important;
+}
+
+/* === Notifications === */
+/* Activity rows: 44 px avatar, bold username, grey time, 44 px trailing thumbnail or Follow button. */
+[data-native-activity-row] {
+  min-height: 60px;
+  box-sizing: border-box;
+  align-items: center;
+  font: 400 14px/18px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+[data-native-activity-avatar] img { border-radius: 50% !important; }
+[data-native-activity-user] { font-weight: 600 !important; color: inherit !important; }
+[data-native-activity-row] time { color: var(--native-secondary-text) !important; font-weight: 400 !important; }
+[data-native-activity-thumb] {
+  flex: 0 0 44px !important;
+  width: 44px !important;
+  height: 44px !important;
+  overflow: hidden !important;
+  margin-left: 12px !important;
+}
+[data-native-activity-thumb] img {
+  width: 44px !important;
+  height: 44px !important;
+  object-fit: cover !important;
+  border-radius: 4px !important;
+}
+/* Follow / Following / Message buttons (activity rows and profiles): native 32 px rounded 8 px. */
+[data-native-follow-button],
+[data-native-profile-button] {
+  height: 32px !important;
+  min-height: 32px !important;
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 16px !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  font: 600 14px/18px -apple-system, BlinkMacSystemFont, system-ui, sans-serif !important;
+  text-decoration: none !important;
+  white-space: nowrap;
+}
+[data-native-follow-button="primary"],
+[data-native-profile-button="primary"] { background: var(--native-primary-button) !important; color: #fff !important; }
+[data-native-follow-button="secondary"],
+[data-native-profile-button="secondary"] { background: var(--native-secondary-button) !important; color: inherit !important; }
+[data-native-follow-button] > *,
+[data-native-profile-button] > * { background: transparent !important; color: inherit !important; }
+
+/* === Profile === */
+/* Every profile page (own tab and pushed), by page kind: 90 px avatar (zoomed by Bridge.js), counts,
+   bio, equal-width 32 px buttons, Posts/Tagged strip with Instagram's icons (Reels tab hidden),
+   and a 3-column grid of 3:4 portrait tiles with 1 px gaps, like current native Instagram. */
+[data-native-profile-avatar] { flex-shrink: 0 !important; }
+[data-native-profile-avatar] img { border-radius: 50% !important; }
+html[data-native-page="profile"] [data-native-profile-header] h1,
+html[data-native-page="profile"] [data-native-profile-header] h2 {
+  font: 600 16px/20px -apple-system, BlinkMacSystemFont, system-ui, sans-serif !important;
+}
+[data-native-profile-count] { font: 400 14px/18px -apple-system, BlinkMacSystemFont, system-ui, sans-serif !important; }
+[data-native-profile-count] span[title],
+[data-native-profile-count] span > span { font-weight: 600 !important; }
+html[data-native-page="profile"] [data-native-profile-button] { flex: 1 1 0 !important; min-width: 0 !important; }
+[data-native-profile-tabs] {
+  display: flex !important;
+  align-items: stretch !important;
+  height: 44px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+[data-native-profile-tab] {
+  flex: 1 1 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 44px !important;
+  margin: 0 !important;
+  border-bottom: 1px solid transparent !important;
+}
+[data-native-profile-tab="selected"] { border-bottom-color: currentColor !important; }
+[data-native-profile-tab] svg { width: 24px !important; height: 24px !important; }
+[data-native-grid] { padding: 0 !important; margin-left: 0 !important; margin-right: 0 !important; gap: 0 !important; }
+[data-native-grid-row] {
+  display: flex !important;
+  gap: 1px !important;
+  margin: 0 0 1px !important;
+  padding: 0 !important;
+}
+[data-native-grid-cell] { flex: 1 1 0 !important; min-width: 0 !important; margin: 0 !important; padding: 0 !important; }
+[data-native-grid-tile] { border-radius: 0 !important; }
+[data-native-grid-ratio] { padding-bottom: 133.333% !important; height: 0 !important; }
+[data-native-grid-tile] img { object-fit: cover !important; border-radius: 0 !important; }
+/* A suppressed app-install dialog may have locked page scrolling. */
+html[data-native-app-dialog] body { overflow: auto !important; }

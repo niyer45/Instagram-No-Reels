@@ -38,6 +38,10 @@ import Foundation
         for link in ["https://instagram.com.evil.com/", "instagram://reels/", "https://www.instagram.com:8443/", "https://user@www.instagram.com/", "http://www.instagram.com/"] {
             check(InstagramNavigation.decision(for: URL(string: link)!, following: allowed) == .blockExternal, "Unsafe navigation")
         }
-        print("Passed \(checks) following-import and navigation checks.")
+        let policyChecks = checks
+        try RouteChecks.run { check($0, $1) }
+        let routeChecks = checks - policyChecks
+        SVGPathChecks.run { check($0, $1) }
+        print("Passed \(policyChecks) following-import and navigation checks, \(routeChecks) route-table checks and \(checks - policyChecks - routeChecks) SVG path checks.")
     }
 }
