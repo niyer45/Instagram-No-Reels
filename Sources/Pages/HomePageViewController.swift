@@ -44,6 +44,12 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
         applyHomeTheme()
     }
 
+    /// Tab re-tap and Content filters reload refresh the tray with the feed.
+    override func reload() {
+        super.reload()
+        tray.load()
+    }
+
     override func installHeader() {
         homeHeader.onActivity = { [weak self] in self?.openPath("/accounts/activity/") }
         homeHeader.onMessages = { [weak self] in self?.openPath("/direct/inbox/") }
