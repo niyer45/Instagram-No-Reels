@@ -15,7 +15,19 @@ import Foundation
 /// - `SHELL_OFFLINE=<seconds>` reports no connection for that long after launch (banner).
 /// - `SHELL_MEMORY_WARNING=<seconds>` simulates a memory warning that long after launch.
 /// - `SHELL_STALE_AFTER=<seconds>` replaces the 30-minute foreground refresh interval.
+/// - `SHELL_PRESENT=filters|profile-menu|unread|search-idle|signout` opens a surface agents cannot
+///   tap to, 2 s after launch (`Surface`).
+/// - `SHELL_HOME_FIXTURE` / `SHELL_HOME_DEMO`: Home's fixture harness (`HomeDemo`).
 enum DebugLaunchOptions {
+    /// Surfaces `SHELL_PRESENT` opens: the Content filters sheet, the Profile action sheet, the
+    /// Notifications dot, the Search caught-up state, and Sign out without its confirmation (to
+    /// check that the avatar cache is cleared).
+    enum Surface: String {
+        case filters, profileMenu = "profile-menu", unread, searchIdle = "search-idle", signOut = "signout"
+    }
+
+    static var surface: Surface? { environment["SHELL_PRESENT"].flatMap(Surface.init(rawValue:)) }
+
     private static var environment: [String: String] { ProcessInfo.processInfo.environment }
 
     static var tab: TabItem? {

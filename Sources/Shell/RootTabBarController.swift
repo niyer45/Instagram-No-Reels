@@ -188,25 +188,22 @@ final class RootTabBarController: UIViewController {
     }
 
     #if DEBUG
-    /// DEBUG-only access to surfaces agents cannot tap to, for simulator screenshots. `SHELL_PRESENT`:
-    /// `filters` (Content filters sheet), `profile-menu` (Profile action sheet), `unread` (the
-    /// Notifications dot), `search-idle` (the Search caught-up state), `signout` (Sign out without its
-    /// confirmation, to check that the avatar cache is cleared).
+    /// DEBUG-only access to surfaces agents cannot tap to, for simulator screenshots
+    /// (`DebugLaunchOptions.surface`, `SHELL_PRESENT`).
     private func presentDebugSurface() {
-        let surface = ProcessInfo.processInfo.environment["SHELL_PRESENT"]
+        guard let surface = DebugLaunchOptions.surface else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
             guard let self else { return }
             switch surface {
-            case "filters": self.environment.router.presentSettings()
-            case "profile-menu":
+            case .filters: self.environment.router.presentSettings()
+            case .profileMenu:
                 self.show(.profile)
                 (self.navigations[.profile]?.viewControllers.first as? ProfilePageViewController)?.showMenu()
-            case "unread": self.tabBar.setBadge(true, on: .activity)
-            case "search-idle":
+            case .unread: self.tabBar.setBadge(true, on: .activity)
+            case .searchIdle:
                 self.show(.search)
                 (self.navigations[.search]?.viewControllers.first as? SearchPageViewController)?.debugShowIdle(top: 52)
-            case "signout": self.environment.signOut { [weak self] in self?.resetTabs() }
-            default: break
+            case .signOut: self.environment.signOut { [weak self] in self?.resetTabs() }
             }
         }
     }
