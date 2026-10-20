@@ -814,6 +814,8 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
             setSearchIdle(idle && route.kind == .search, top: top)
         case .storiesSlot, .storiesTray, .storyViewer, .wordmark:
             pageMessage(message)
+        case .searchFocus:
+            break
         }
     }
 

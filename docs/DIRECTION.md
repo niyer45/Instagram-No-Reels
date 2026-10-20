@@ -233,6 +233,7 @@ drop malformed messages).
 | `storiesTray` | `{height, items}` | tray measured (stories web view only) |
 | `storiesSlot` | `{top}` | document position of FeedFilter's stories spacer (Following feed) |
 | `searchIdle` | `{idle, top}` | Search is idle (no focus/query); native shows the caught-up state below `top` |
+| `searchFocus` | `{}` | the Search field gained focus (DEBUG outline trigger only; native ignores it otherwise) |
 | `wordmark` | `{viewBox, paths}` | Instagram wordmark vector captured for the native Home header (stories web view only) |
 | `openControls` | `{}` | user chose the filter settings entry |
 
@@ -302,6 +303,11 @@ off screen at a memory warning, unload behind a snapshot and reload when shown.
   `ready-3s`, `refresh-start`, `refresh-loading`, `refresh-end`, `scrolled`) with structure only:
   tags, roles, allowlisted ARIA labels, our data-* names, positions, rects and href shapes; no
   text, URLs or usernames; extra `main` (outline rooted at `main`) and `bars` (nav/header/fixed/sticky subtrees) sections (`hrefShape`, `outlineTree` in Bridge.js, tested in `Tests/outline.test.cjs`).
+  The Search tab adds three captures with the same files and retention: `search-ready` (when
+  the page reports ready), `search-ready-3s` (3 s after that) and `search-focus` (1 s after the
+  search field gains focus, from the `searchFocus` bridge message). Their `page` also has a
+  `searchField` section (`null` when absent): the outline subtree (depth <= 6, <= 80 nodes) of the
+  `data-native-search-field` box that `tabScanSearch` marks, with its `data-native-*` marks in each node's `data`.
 - Commits: small, imperative subject, body says *why*. Run the checks in §5 before every
   commit.
 

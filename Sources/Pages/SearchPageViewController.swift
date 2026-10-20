@@ -16,6 +16,9 @@ final class SearchPageViewController: WebPageViewController {
         super.viewDidLoad()
         // Native Search dismisses the keyboard as soon as the results are dragged.
         webView.scrollView.keyboardDismissMode = .onDrag
+        #if DEBUG
+        onReady = { [weak self] in self?.searchReady() }
+        #endif
     }
 
     /// Search configures its web view's scroll view once (keyboard dismissal above); a web view
@@ -30,6 +33,9 @@ final class SearchPageViewController: WebPageViewController {
     }
 
     override func bridge(didReceive message: BridgeMessage) {
+        #if DEBUG
+        if case .searchFocus = message { searchFocused(); return }
+        #endif
         guard case .searchIdle(let idle, let top) = message else {
             super.bridge(didReceive: message)
             return
@@ -82,6 +88,48 @@ final class SearchPageViewController: WebPageViewController {
     }
 
     #if DEBUG
+    /// Outline capture state: bumped at each ready so delayed captures of an older page are skipped.
+    private var outlineGeneration = 0
+
+    private func searchReady() {
+        outlineGeneration += 1
+        let generation = outlineGeneration
+        captureOutline("search-ready")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+            guard let self, self.outlineGeneration == generation else { return }
+            self.captureOutline("search-ready-3s")
+        }
+    }
+
+    /// The search field gained focus: capture one second later (keyboard and Cancel settled).
+    private func searchFocused() {
+        let generation = outlineGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            guard let self, self.outlineGeneration == generation else { return }
+            self.captureOutline("search-focus")
+        }
+    }
+
+    /// Writes a sanitized page outline (structure only, including the `searchField` section) plus native frame numbers.
+    private func captureOutline(_ capture: String) {
+        guard !isLoginContent, route.kind == .search else { return }
+        let script = "window.__instagram&&window.__instagram.outline?window.__instagram.outline():null"
+        webView.evaluateJavaScript(script) { [weak self] result, _ in
+            guard let outline = result as? [String: Any] else { return }
+            Task { @MainActor in
+                guard let self else { return }
+                let native: [String: Any] = [
+                    "webViewFrame": Self.ints(self.webView.frame),
+                    "adjustedInsetTop": Int(self.webView.scrollView.adjustedContentInset.top.rounded()),
+                    "isReady": self.isReady,
+                    "idleShown": self.idleHost != nil,
+                    "idleRequested": self.idleRequested,
+                ]
+                Diagnostics.writeOutline(outline, native: native, capture: capture)
+            }
+        }
+    }
+
     /// Shows the idle state over the skeleton without a page (simulator screenshots; `SHELL_PRESENT=search-idle`).
     func debugShowIdle(top: CGFloat) {
         idleTop = top

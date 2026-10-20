@@ -124,5 +124,12 @@ test('outlineSections yields main and bars sections without leaking text',()=>{
  const json=JSON.stringify(s);
  for(const word of ['alice','sunset','caption','ABC123','cdninstagram','secret','scontent'])assert.ok(!json.includes(word),word);
  const none=outlineSections(h('html',{},[h('body')]),env,{nodes:[]},new Map());
- assert.equal(none.main,null);assert.deepEqual(none.bars,[]);
+ assert.equal(none.main,null);assert.deepEqual(none.bars,[]);assert.equal(none.searchField,null);
+ const input=h('input',{placeholder:'find alice',value:'secret query'},[],{});
+ const field=h('div',{'data-native-search-field':'','aria-label':"alice's box"},[h('span',{'data-native-search-label':''},[],{text:'Search alice'}),input]);
+ const withField=outlineSections(h('html',{},[h('body',{},[h('div',{},[field])])]),env,{nodes:[]},new Map());
+ assert.equal(withField.searchField.nodes[0].tag,'div');assert.deepEqual(withField.searchField.nodes[0].data,['data-native-search-field']);
+ assert.deepEqual(withField.searchField.nodes.map(n=>n.tag),['div','span','input']);
+ const fieldJson=JSON.stringify(withField);
+ for(const word of ['alice','secret','query','find','Search alice'])assert.ok(!fieldJson.includes(word),word);
 });

@@ -69,7 +69,7 @@ function page(pathname,build,{hideChrome=true}={}){
  vm.runInNewContext(source,context);
  const scan=()=>{listeners.mutation();for(let i=0;i<3;i++){const run=frames.splice(0);for(const f of run)f();}};
  scan();
- return {html,body,document,window,listeners,scan,tabs:window.__instagramTabs,
+ return {html,body,document,window,listeners,scan,posted,tabs:window.__instagramTabs,
   fire:(type,event)=>{for(const f of listeners['doc:'+type]||[])f(event||{});}};
 }
 
@@ -113,6 +113,13 @@ test('Search field gets the native skin and a Cancel that appears on focus or te
  p.document.activeElement=input;p.fire('focusin');assert.equal(p.html.getAttribute('data-native-search-active'),'yes');
  p.document.activeElement=p.body;p.fire('focusout');assert.equal(p.html.getAttribute('data-native-search-active'),null);
  input.value='al';p.fire('input');assert.equal(p.html.getAttribute('data-native-search-active'),'yes');
+});
+
+test('focusing the search field posts searchFocus once per focus (DEBUG outline trigger)',()=>{
+ const p=searchPage();const input=p.document.querySelector('input');
+ const posts=()=>p.posted?p.posted.filter(m=>m.type==='searchFocus').length:-1;
+ p.fire('focusin',{target:p.body});assert.equal(posts(),0,'other elements do not trigger it');
+ p.fire('focusin',{target:input});assert.equal(posts(),1);
 });
 
 test('Instagram\'s overlay "Search" label is hidden so Search is drawn once, and the field keeps one magnifier and one Cancel',()=>{

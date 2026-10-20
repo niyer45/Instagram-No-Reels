@@ -184,7 +184,12 @@ function outlineSections(doc,env,bodyTree,bodyIndexes){
   bars.push({kind,rect:[r.x,r.y,r.width,r.height].map(v=>Math.round(Number(v)||0)),pos:css.position,hidden:hidden||null,
    nodes:outlineTree(node,{...env,indexes:undefined,maxNodes:60,maxDepth:6}).nodes});
  }
- return {main:mainTree,bars};
+ // The Search field box (marked by tabScanSearch): a deeper subtree so every label, input, overlay and button in it is visible.
+ const fieldNode=doc.querySelector('[data-native-search-field]');
+ let searchField=null;
+ if(fieldNode){const r=env.rectOf(fieldNode)||{};
+  searchField={rect:[r.x,r.y,r.width,r.height].map(v=>Math.round(Number(v)||0)),nodes:outlineTree(fieldNode,{...env,indexes:undefined,maxNodes:80,maxDepth:6}).nodes};}
+ return {main:mainTree,bars,searchField};
 }
 if(typeof module!=='undefined'&&module.exports){module.exports={classify,decide,readiness,official,opaqueRGB,surfaceRGB,avatarURL,shapePath,hrefShape,safeLabel,outlineTree,outlineMarks,outlineSections};return;}
 if(window.top!==window||!official(location.href))return;
@@ -220,7 +225,7 @@ window.__instagram=Object.freeze({
    const tree=outlineTree(document.body,env),sections=outlineSections(document,env,tree,env.indexes),prop=k=>root.style.getPropertyValue(k),q=hrefShape('/'+location.search)||'';
    return {route:{kind:classify(location.pathname).kind,search:q.includes('?')?q.slice(q.indexOf('?')):''},viewport:{w:window.innerWidth,h:window.innerHeight},scroll:{x:Math.round(window.scrollX),y:Math.round(window.scrollY)},documentHeight:Math.round(root.scrollHeight),
     layout:{headerHeight:prop('--native-header-height'),storiesHeight:prop('--native-stories-height'),chrome:root.getAttribute('data-native-chrome'),page:root.getAttribute('data-native-page'),stories:root.getAttribute('data-native-stories'),refreshing:root.getAttribute('data-native-refreshing')!==null},
-    marks:outlineMarks(document,n=>env.indexes.has(n)?env.indexes.get(n):-1,env),outline:tree.nodes,truncated:tree.truncated,main:sections.main,bars:sections.bars};
+    marks:outlineMarks(document,n=>env.indexes.has(n)?env.indexes.get(n):-1,env),outline:tree.nodes,truncated:tree.truncated,main:sections.main,bars:sections.bars,searchField:sections.searchField};
   }catch(_){return {error:'exception'};}},
  post,
  get currentPolicy(){return policy;}
@@ -719,6 +724,8 @@ function tabScanSearch(){
 }
 if(role==='page'){
  for(const type of ['focusin','focusout','input'])document.addEventListener(type,()=>{if(tabSearchInput)setTimeout(tabSearchActive,0);},true);
+ // DEBUG outline capture trigger only (native ignores it in release): the search field gained focus.
+ document.addEventListener('focusin',event=>{if(tabSearchInput&&event&&event.target===tabSearchInput)post('searchFocus');},true);
  // Dragging the results dismisses the keyboard, like native Search (the query and Cancel stay).
  let touchY=null;
  document.addEventListener('touchstart',event=>{touchY=event.touches&&event.touches[0]?event.touches[0].clientY:null;},{passive:true,capture:true});

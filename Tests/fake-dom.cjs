@@ -29,6 +29,7 @@ class El{
  get previousElementSibling(){const s=this.parentElement?this.parentElement.children:[];return s[s.indexOf(this)-1]||null;}
  get textContent(){return [this.text,...this.children.map(c=>c.textContent)].filter(Boolean).join(' ');}
  set textContent(v){this.text=String(v);}
+ getAttributeNames(){return Array.from(this.attrs.keys());}
  getAttribute(k){return this.attrs.has(k)?this.attrs.get(k):null;}
  setAttribute(k,v){this.attrs.set(k,String(v));}
  hasAttribute(k){return this.attrs.has(k);}

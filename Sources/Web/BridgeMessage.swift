@@ -14,6 +14,7 @@ enum BridgeMessage: Equatable {
     case storiesTray(height: Double, items: Int)
     case storiesSlot(top: Double)
     case searchIdle(idle: Bool, top: Double)
+    case searchFocus
     case wordmark(WordmarkShape)
     case openControls
 
@@ -67,6 +68,8 @@ enum BridgeMessage: Equatable {
         case "searchIdle":
             guard let value = read(IdleBody.self), value.top.isFinite, (0...2000).contains(value.top) else { return nil }
             return .searchIdle(idle: value.idle, top: value.top)
+        case "searchFocus":
+            return .searchFocus
         case "wordmark":
             return read(WordmarkShape.self).flatMap { $0.isValid ? .wordmark($0) : nil }
         case "openControls":
