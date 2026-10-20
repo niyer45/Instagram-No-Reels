@@ -57,16 +57,18 @@ Sources/
   Shell/          RootTabBarController, TabItem, InstagramTabBar (styling, avatar item),
                   SplashView
   Navigation/     Router (URL -> Route -> presentation), RouteClassifier, RouteDecision,
-                  PageNavigationController
+                  PageNavigationController, ModalContainerController
   Pages/          WebPageViewController (one per page), HomePageViewController,
+                  SearchPageViewController, ProfilePageViewController (+ ProfileHeaderView),
                   PageHeaderView, HomeHeaderView, Wordmark*, StoriesTrayHost,
-                  StoryViewerController, SkeletonView, LoadFailureView, SearchIdleView
+                  StoryViewerController, SkeletonView, LoadFailureView, OfflineBanner,
+                  SearchIdleView, HomeDemo (DEBUG fixture harness)
   Web/            WebPageFactory (WKWebView construction, shared config), WebBridge
                   + BridgeMessage (typed messages), UserScripts (loads Resources/*.js|css)
   Filter/         FollowingPolicy.swift (unchanged), FollowingStore, FilterStatus(+Payload),
                   ContentFilterSettingsView
   Support/        Haptics, Theme (colors, hairline), Glyphs + SVGPath, Diagnostics,
-                  DebugLaunchOptions (DEBUG only)
+                  Connectivity, DebugLaunchOptions (DEBUG only)
 Resources/
   FeedFilter.js   post filtering (observe-only), status messages
   Bridge.js       route/navigate/ready/theme/avatar/story-viewer/tray messages to native
@@ -124,7 +126,10 @@ Implementation: `RouteKind` + identity in `Sources/Navigation/RouteClassifier.sw
 mirrors `classify` in `Resources/Bridge.js`; both are checked against the single table in
 `Tests/route-fixtures.json` (node and Swift checks). Own vs other profile is decided by
 comparing the identity with the signed-in username. `blocked` (Reels routes, including
-`/<user>/reels/`) is an extra kind that the Router refuses. A page whose content is
+`/<user>/reels/`) is an extra kind that the Router refuses silently. Keyword search results
+(`/explore/search/keyword/`), Discover people (`/explore/people/`), hashtag and location pages
+are `other` (pushed), not the Search tab. Native titles come from one table,
+`Route.title(query:webTitle:ownUsername:)`, fixture-checked like the kinds. A page whose content is
 Instagram's login (password form or the logged-out landing) is treated as `login`: root
 pages hide their native header over it; pushed pages keep the back chevron.
 
@@ -136,10 +141,36 @@ different post/profile than the current page, is cancelled in the web view and p
 natively: **push** for content pages (post, profile, comments, likes, activity, inbox,
 thread, settings, other), **present full-screen** for `stories` and `create`, **replace
 root** for `login`. Same-page interactions (like, follow, open comment composer, expand
-caption, variant toggles) stay in the web view. Reels routes are blocked everywhere.
+caption, variant toggles) stay in the web view. Links are decided in the window's capturing
+click phase, before Instagram's own handlers.
 
-Back: interactive pop gesture and a native back chevron in the page header. Web
-`allowsBackForwardNavigationGestures` is off; history is the navigation stack.
+Phase 2 decisions (changed with the code; rationale in each line):
+
+- Full-screen pages are presented **over the current page** through `ModalContainerController`
+  (`Sources/Navigation/ModalContainerController.swift`): status bar and home indicator hidden,
+  a downward swipe that follows the finger dismisses, and Instagram's own close control
+  dismisses through its route change. The page underneath never leaves the hierarchy, so it is
+  not reloaded. Home's story viewer uses the same container (§3.3), so there is one modal
+  mechanism.
+- **External links** (other sites) open in `SFSafariViewController` over the current page, as
+  in the native app; Instagram's `l.instagram.com` link shim is unwrapped to its target;
+  `mailto:`/`tel:` go to the system; App Store, `instagram://` and other app redirects and
+  scripted redirects are dropped silently. Facebook sign-in from the login page shows one
+  explanation (it cannot sign this app in).
+- **Reels are dropped silently** everywhere (links, the profile Reels tab, history changes);
+  the Phase 1 "Reels are disabled" and "External links … disabled" alerts are gone, because
+  the native app has no such alerts and they interrupted ordinary taps.
+- Message threads and the new-message composer hide the shared tab bar while they are in the
+  stack (like `hidesBottomBarWhenPushed`); `RootTabBarController.tabBar` is the one reference.
+- Sign-in is evidence-based (`SessionEvidence`): a ready signed-in-only page, the avatar or the
+  filtered feed marks the session signed in; only actual sign-in routes (`/accounts/login`,
+  `emailsignup`, `signup`, `password/reset`, `onetap`, `logout`, `/challenge`, `/checkpoint`,
+  `/consent`, `/oauth`, `/two_factor`) count as login, in Bridge.js, RouteClassifier and
+  FeedFilter alike, so Notifications (`/accounts/activity/`) and settings keep their headers.
+
+Back: interactive pop from the left screen edge only (iOS 26's full-width content swipe is
+off, so it cannot fight carousels or the Stories tray) and a native back chevron in the page
+header. Web `allowsBackForwardNavigationGestures` is off; history is the navigation stack.
 
 ### 3.3 Home specifics
 
@@ -150,14 +181,19 @@ Back: interactive pop gesture and a native back chevron in the page header. Web
   a dedicated stories web view but host it as a proper native component
   (`StoriesTrayHost`) placed under the header and above the feed. The feed page reserves
   room with the existing `[data-instagram-stories-slot]` element. Opening a story presents
-  the viewer full-screen (native modal) on top; closing returns to the tray.
+  `StoryViewerController` (hosting the tray web view) inside `ModalContainerController`
+  (§3.2); the container's downward swipe and the viewer's left-edge swipe call Bridge.js
+  `window.__instagramTray.closeViewer()`, which clicks Instagram's Close control (else
+  `history.back()`), and the page's `storyViewer` closed message dismisses it; closing
+  returns to the tray.
 - Pull-to-refresh: native `UIRefreshControl`. Keep the current hold-until-ready behaviour
   (header, tray and posts settle together) but implement it inside the page controller.
   Implemented in `WebPageViewController` for Home, Profile, Notifications and Messages: on
   release, a snapshot of the content below the spinner stays up while the document
   reloads; on `ready` the spinner ends and the snapshot (and the Home header) slide up by
-  the held distance together, then the snapshot fades. At the top, the Home header moves
-  down with the pull so the spinner shows above it.
+  the held distance together, then the snapshot fades. While pulling, the Home header stays
+  put and the spinner shows in the gap below it (Phase 2: the native app does this; the
+  Phase 1 header sliding down under the spinner did not match).
 - Tray placement: `StoriesTrayHost` is a subview of the feed web view's `scrollView` at the
   document position FeedFilter reports for the slot (`storiesSlot`), so it scrolls with
   the posts without per-frame bridge messages. The tray web view keeps a full viewport and
@@ -167,7 +203,8 @@ Back: interactive pop gesture and a native back chevron in the page header. Web
   `svg[aria-label="Instagram"]` by the tray web view and cached; a text fallback shows
   until the first capture.
 - Caught-up card: style the injected card to match native (gradient ring check mark,
-  "You're all caught up", secondary text) using CSS in `NativeSkin.css`.
+  "You're all caught up", secondary text, blue "View older posts") in the `/* === Home === */`
+  block of `NativeSkin.css`, which also skins approved Following-feed post cards.
 
 ### 3.4 Bridge protocol (`Bridge.js` <-> `WebBridge.swift`)
 
@@ -199,7 +236,10 @@ Native -> page uses `window.__instagram.policy(json)`, `window.__instagram.refre
 `window.__instagram.layout({headerHeight, storiesHeight, hideChrome})` (CSS variables and
 whether web chrome is hidden), all exposed from `Bridge.js`. Per-web-view values that must
 exist at document start (role `page`/`tray`, header height, stories slot, policy) are in
-`window.__instagramBoot`. The ad-hoc `following-policy-change` event and the
+`window.__instagramBoot`. Phase 2 adds `window.__instagramTray.closeViewer()` (tray web view)
+and `window.__instagramTabs` (`switchAccount`, `unread`, `cancelSearch`, `hasSearchField`) for
+the Home story viewer and the Search, Notifications and Profile tabs; no new message types.
+The ad-hoc `following-policy-change` event and the
 `followingXxx` handler names are gone.
 
 ### 3.5 Web content skin (`NativeSkin.css`)
@@ -211,13 +251,18 @@ Injected at document start in every page web view. Responsibilities:
   header provides it.
 - `-webkit-tap-highlight-color: transparent`, `-webkit-touch-callout: none`,
   `user-select: none` except in inputs/textareas/contenteditable.
-- Background colours identical to native surfaces (read from the page and mirrored both
-  ways through `theme`).
+- Background colours identical to native surfaces: the page's colour is sampled and sent
+  through `theme`, and native surfaces and the window style follow it. The page's own colour
+  scheme (`prefers-color-scheme`) is never derived from that sample: every web view's
+  `overrideUserInterfaceStyle` is the app appearance the scene reports (Dark via Info.plist),
+  because inheriting the window style made one light sample keep Instagram light (Phase 2
+  integration).
 - Native-parity spacing/sizes for post cards where cheap and robust. Prefer attribute and
   structural selectors over Instagram's hashed class names, which change.
 - Reserve top space equal to the native header height via a CSS variable the native side
   sets (`--native-header-height`), rather than `contentInset`, so the web layout is stable.
-  Only Home needs it (§3.2 Headers); other pages set it to 0.
+  Only Home needs it (§3.2 Headers); other pages set it to 0. Instagram's own reservation for
+  its fixed top bar (padding-top on the element after it) is collapsed when the bar is hidden.
 - Web chrome is found structurally by `Bridge.js` and marked `data-native-hidden`; the CSS
   hides marked nodes. Every selector and its fallback is in `docs/DOM-NOTES.md`.
 
@@ -225,9 +270,14 @@ Injected at document start in every page web view. Responsibilities:
 
 Each kind has a skeleton (feed cards, profile header+grid, search bar+list, inbox rows).
 Show it immediately, hide with a short cross-fade on `ready`, and never let the web view
-show its own spinner during that time. Timeouts: show a native "Couldn't load, tap to
-retry" state after 20 s. Web content process termination reloads the page with the skeleton
-up.
+show its own spinner during that time. Timeouts and failures: after 20 s, or when the load
+fails, show a native failure view worded like Instagram's ("Couldn't refresh feed" on Home,
+"Couldn't load profile" / "Couldn't load …" elsewhere, saying when the device is offline) with
+a blue **Retry** button (Phase 2: replaces "Couldn't load, tap to retry"). While offline a
+"No internet connection" banner slides in under the header, and failed or waiting pages retry
+by themselves on reconnect. Web content process termination reloads the page with the
+skeleton up. Only the top four pages of a stack keep their documents; deeper pages, and pages
+off screen at a memory warning, unload behind a snapshot and reload when shown.
 
 ## 4. Conventions
 
@@ -264,7 +314,8 @@ Simulator smoke (a booted iPhone simulator is available via `xcrun simctl`):
 `Tools/simshots.sh <udid> [dir]` installs the Debug build and captures every tab live and on its
 skeleton, a pushed page, the failure state and the offline banner. DEBUG builds read `SHELL_TAB`,
 `SHELL_SKELETON_PREVIEW=1`, `SHELL_FAILURE_PREVIEW=1`, `SHELL_OPEN_URL`, `SHELL_OPEN_URLS`,
-`SHELL_OFFLINE`, `SHELL_MEMORY_WARNING` and `SHELL_STALE_AFTER` (passed as `SIMCTL_CHILD_…` to
+`SHELL_OFFLINE`, `SHELL_MEMORY_WARNING`, `SHELL_STALE_AFTER`, `SHELL_POP`, `SHELL_PRESENT` and
+Home's fixture harness `SHELL_HOME_FIXTURE`/`SHELL_HOME_DEMO` (passed as `SIMCTL_CHILD_…` to
 `xcrun simctl launch`; `Sources/Support/DebugLaunchOptions.swift`). `Tools/launch-timing.sh
 <udid> [runs]` reinstalls the app and prints launch milestones for a fresh-install launch and
 warm launches; the first launch after a fresh install spends several seconds starting WebKit,
