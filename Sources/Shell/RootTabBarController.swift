@@ -144,13 +144,7 @@ final class RootTabBarController: UIViewController {
     // MARK: Session changes
 
     private func makeNavigation(_ tab: TabItem) -> PageNavigationController {
-        let url = tab.rootURL(account: environment.account)
-        let root: WebPageViewController
-        switch tab {
-        case .search: root = SearchPageViewController(environment: environment, url: url, placement: .tabRoot(.search))
-        case .profile: root = ProfilePageViewController(environment: environment, url: url, placement: .tabRoot(.profile))
-        case .home, .activity: root = environment.router.makePage(url, placement: .tabRoot(tab), environment: environment)
-        }
+        let root = environment.router.makePage(tab.rootURL(account: environment.account), placement: .tabRoot(tab), environment: environment)
         if let home = root as? HomePageViewController {
             home.onLaunchReady = { [weak self] in self?.launchReady() }
         }

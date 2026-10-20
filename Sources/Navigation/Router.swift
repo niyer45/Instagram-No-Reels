@@ -61,11 +61,19 @@ final class Router {
 
     /// Builds the page for `url`. Callers pass the environment they already hold, so there is no
     /// state in which a page cannot be made (the Router's own reference is weak).
+    /// Tab roots get their tab's page class (Home only for the feed itself), also when a root is replaced
+    /// (login) or rebuilt after signing in, so Search and Profile keep their own behaviour and header.
     func makePage(_ url: URL?, placement: WebPageViewController.Placement, environment: AppEnvironment) -> WebPageViewController {
-        if case .tabRoot(.home) = placement, url.map({ Route(url: $0).kind }) == .home {
+        switch placement {
+        case .tabRoot(.home) where url.map({ Route(url: $0).kind }) == .home:
             return HomePageViewController(environment: environment, url: url)
+        case .tabRoot(.search):
+            return SearchPageViewController(environment: environment, url: url, placement: placement)
+        case .tabRoot(.profile):
+            return ProfilePageViewController(environment: environment, url: url, placement: placement)
+        default:
+            return WebPageViewController(environment: environment, url: url, placement: placement)
         }
-        return WebPageViewController(environment: environment, url: url, placement: placement)
     }
 
     // MARK: External links
