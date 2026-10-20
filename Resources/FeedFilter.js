@@ -17,7 +17,13 @@ function code(href){
   return null;
  }catch(_){return null;}
 }
-function route(p){if(/^\/(reels?|tv|clips)(\/|$)/.test(p))return 'blocked';if(/^\/(accounts|challenge|checkpoint|consent|oauth|two_factor)(\/|$)/.test(p))return 'login';if(/^\/explore(?:\/|$)/.test(p))return 'search';return p==='/'?'feed':'other';}
+// Sign-in routes only (same sets as classify in Bridge.js and RouteClassifier.swift): other /accounts/ pages such as
+// /accounts/activity/ (Notifications), /accounts/edit/ and /accounts/password/change/ are signed-in pages.
+const LOGIN_ROOTS=new Set(['challenge','checkpoint','two_factor','consent','oauth']),LOGIN_ACCOUNTS=new Set(['login','emailsignup','signup','password','onetap','logout','suspended','disabled']);
+function loginRoute(p){const parts=String(p||'/').toLowerCase().split('/').filter(Boolean);if(parts[0]==='accounts')return LOGIN_ACCOUNTS.has(parts[1]||'')&&!(parts[1]==='password'&&parts[2]==='change');return LOGIN_ROOTS.has(parts[0]||'');}
+/** Signed-in /accounts/ pages (settings, activity); their password fields (change password) are not Instagram's login. */
+function accountPage(p){return /^\/accounts\//i.test(String(p||''))&&!loginRoute(p);}
+function route(p){if(/^\/(reels?|tv|clips)(\/|$)/.test(p))return 'blocked';if(loginRoute(p))return 'login';if(/^\/explore(?:\/|$)/.test(p))return 'search';return p==='/'?'feed':'other';}
 function ingest(value,target=records){
  let visited=0;const seen=new Set();
  function walk(x,depth,inheritedBad=false){
@@ -73,7 +79,7 @@ function classify(f,allowed,metadata,browsing=false){
  if(!includeOlder&&metadata?.takenAt&&metadata.takenAt<Date.now()/1000-2*86400)return false;
  return metadata?.following===true||allowed.has(author);
 }
-if(typeof module!=='undefined'&&module.exports){module.exports={handle,official,profileHandle,code,route,ingest,parse,classify,caughtUp,safeHeaderTitle,shouldContinueScroll,paginationTarget};return;}
+if(typeof module!=='undefined'&&module.exports){module.exports={handle,official,profileHandle,code,route,loginRoute,ingest,parse,classify,caughtUp,safeHeaderTitle,shouldContinueScroll,paginationTarget};return;}
 if(window.top!==window||!official(location.href))return;
 // Messages go through Resources/Bridge.js (window.__instagram); the policy arrives in the boot object and later via __instagram.policy().
 const native=window.__instagram||null;let policy=window.__instagramBoot?.policy||null;
@@ -234,7 +240,7 @@ let shown=0,hidden=0,missing=false,unknown=false,language=false;
   if(slot){const height='var(--native-stories-height,0px)';if(slot.style.height!==height)slot.style.height=height;publishStoriesSlot();}
  }
  const positive=[...records.values()].some(x=>x.following===true);
- const login=mode==='login'||!!document.querySelector('input[type="password"]')||(!articles.length&&!records.size&&!!document.querySelector('main a[href^="/accounts/login"]'));
+ const login=mode==='login'||!accountPage(location.pathname)&&!!document.querySelector('input[type="password"]')||(!articles.length&&!records.size&&!!document.querySelector('main a[href^="/accounts/login"]'));
  const reason=mode==='blocked'?'blocked-route':login?'login':language?'unsupported-language':missing?'following-unavailable':unknown?'unrecognized-posts':!articles.length?(mode==='feed'?'no-posts':'filtered'):'filtered';
  const state=login?'login':missing?'needsFollowing':mode==='blocked'||language||unknown||(mode==='feed'&&!articles.length)?'unsupported':'filtered';
  const recordValues=[...records.values()];

@@ -350,3 +350,22 @@ test('Following feed keeps the stories spacer sized by native CSS and reports it
  assert.deepEqual(f.posted.filter(m=>m.type==='storiesSlot'),[{type:'storiesSlot',top:144}]);
  await f.mutate();assert.equal(f.posted.filter(m=>m.type==='storiesSlot').length,1);
 });
+
+test('only sign-in routes are login; Notifications, settings and change password are not',()=>{
+ for(const p of ['/accounts/login/','/accounts/emailsignup/','/accounts/signup/phone/','/accounts/password/reset/','/accounts/onetap/','/accounts/logout/','/challenge/abc/','/checkpoint/','/consent/','/oauth/authorize/','/two_factor/','/Accounts/Login/'])assert.equal(route(p),'login',p);
+ for(const p of ['/accounts/activity/','/accounts/edit/','/accounts/settings/','/accounts/password/change/','/accounts/privacy_and_security/','/accountsx/'])assert.notEqual(route(p),'login',p);
+});
+test('FeedFilter login routes match the shared route table (Bridge.js and RouteClassifier.swift)',()=>{
+ const {loginRoute}=require('../Resources/FeedFilter.js');
+ const table=JSON.parse(fs.readFileSync(require.resolve('./route-fixtures.json'),'utf8'));
+ let checked=0;
+ for(const [path,kind] of table.classify){const p=new URL(path,'https://www.instagram.com').pathname;assert.equal(loginRoute(p),kind==='login',path);checked++;}
+ assert.ok(checked>40);
+});
+test('Notifications and settings pages report their status without login, change password included',()=>{
+ for(const path of ['/accounts/activity/','/accounts/edit/'])assert.notEqual(fixture({path}).statuses.at(-1).state,'login',path);
+ assert.notEqual(fixture({path:'/accounts/password/change/',password:true}).statuses.at(-1).state,'login');
+ assert.equal(fixture({path:'/accounts/password/reset/',password:true}).statuses.at(-1).state,'login');
+ assert.equal(fixture({path:'/accounts/login/'}).statuses.at(-1).state,'login');
+ assert.equal(fixture({path:'/alice/',password:true}).statuses.at(-1).state,'login');
+});
