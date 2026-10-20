@@ -48,6 +48,7 @@ The simulator checks used the logged-out pages and `Tests/fixtures/home-feed.htm
 
 - [ ] The header stays put and the native spinner shows in the gap below it, above the tray. After release the pulled distance holds until the new feed is ready, then header, tray and posts settle up together with no blank flash; the tray keeps showing the previous stories (no grey rings flash) until the new tray is measured.
 - [ ] During the refresh there is exactly one stories row (the previous one, in the snapshot; no second row from Instagram's page or the reloading tray), no Instagram web bar or any web content in the gap under the header, and the previous feed stays until the new one is ready. Repeat with a slow connection (Network Link Conditioner) and with Airplane Mode (the page must not stay blank).
+- [ ] Sound: on a post or story with audio, tap the speaker/unmute control: sound plays, including with the ringer switch on silent; other apps' audio (music) stops only when you unmute; the control is visible and tappable on posts and in the story viewer. Note its label if it differs from DOM-NOTES "Sound".
 
 ## Stories
 

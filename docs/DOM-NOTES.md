@@ -178,3 +178,11 @@ markup built from these assumptions, not a capture of Instagram's signed-in DOM.
 | Inline comment field | `form:has(textarea)` → hidden (native has no inline composer in the feed; Comment opens the comments page) | assumed | The field shows. |
 | Not styled | Caption username (no attribute tells it from @mentions), carousel dots (no stable attribute), "•" separator text | — | Instagram's own style. |
 | Caught-up card | `[data-instagram-caught-up]` and its `[data-part]` children, injected by FeedFilter | n/a (our markup) | — |
+
+## Sound (audio session + unmute control)
+
+| What | Selector / rule | Found | Fallback when it fails |
+| --- | --- | --- | --- |
+| Feed and story videos start muted with a tap-to-unmute toggle | An element labelled like "Toggle audio", "Audio is muted", "Audio is playing", "Unmute", "Mute" (button, `[role="button"]` or svg `aria-label`). The skin never targets it: no rule hides it or sets `pointer-events` on it (audited: the only hiding rules in cards are `form:has(textarea)`, the stories row, app banners and `[data-native-hidden]` bars, none of which contain a video). Native code does not touch it either. | assumed | If the control is missing from the outline of a signed-in card, capture it and record the real label here; do not add CSS that hides it. |
+| Playback category | `AudioSession.activateForPlayback()` sets `.playback`/`.moviePlayback` once at scene connect (category only, not activated). | n/a (native) | Without it, sound is silenced by the ringer switch. |
+| Playback policy | `mediaTypesRequiringUserActionForPlayback = .all` unchanged: unmute happens in Instagram's tap handler (a user gesture); muted autoplay is Instagram's own behaviour. | assumed | Only revisit with a concrete device finding. |

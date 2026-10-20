@@ -19,6 +19,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     @MainActor
     func connect(_ scene: UIWindowScene) {
         guard window == nil else { return }
+        AudioSession.activateForPlayback()
         #if DEBUG
         Diagnostics.launchMark("scene")
         #endif
