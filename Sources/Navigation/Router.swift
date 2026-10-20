@@ -47,20 +47,21 @@ final class Router {
             shell.select(.search, popToRoot: true)
         case .push:
             let navigation = (page?.navigationController as? PageNavigationController) ?? shell.selectedNavigation
-            navigation.pushViewController(makePage(url, placement: .pushed), animated: true)
+            navigation.pushViewController(makePage(url, placement: .pushed, environment: environment), animated: true)
             Haptics.push()
         case .fullScreen:
-            let modal = ModalContainerController(content: makePage(url, placement: .modal))
+            let modal = ModalContainerController(content: makePage(url, placement: .modal, environment: environment))
             shell.topmostPresenter.present(modal, animated: true)
         case .replaceRoot:
             environment.account.markSignedOut()
             let navigation = (page?.navigationController as? PageNavigationController) ?? shell.selectedNavigation
-            navigation.setViewControllers([makePage(url, placement: .tabRoot(navigation.tabItem))], animated: false)
+            navigation.setViewControllers([makePage(url, placement: .tabRoot(navigation.tabItem), environment: environment)], animated: false)
         }
     }
 
-    func makePage(_ url: URL?, placement: WebPageViewController.Placement) -> WebPageViewController {
-        guard let environment else { fatalError("Router used without an environment") }
+    /// Builds the page for `url`. Callers pass the environment they already hold, so there is no
+    /// state in which a page cannot be made (the Router's own reference is weak).
+    func makePage(_ url: URL?, placement: WebPageViewController.Placement, environment: AppEnvironment) -> WebPageViewController {
         if case .tabRoot(.home) = placement, url.map({ Route(url: $0).kind }) == .home {
             return HomePageViewController(environment: environment, url: url)
         }
@@ -124,7 +125,7 @@ final class Router {
             guard let root = navigation.viewControllers.first as? WebPageViewController else { continue }
             let homeIsPlain = tab == .home && !(root is HomePageViewController)
             guard homeIsPlain || SessionEvidence.rebuildsAfterSignIn(root: root.route, isLoginContent: root.isLoginContent, tabKind: Self.rootKind(of: tab)) else { continue }
-            navigation.setViewControllers([makePage(tab.rootURL(account: environment.account), placement: .tabRoot(tab))], animated: false)
+            navigation.setViewControllers([makePage(tab.rootURL(account: environment.account), placement: .tabRoot(tab), environment: environment)], animated: false)
         }
     }
 

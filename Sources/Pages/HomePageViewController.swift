@@ -30,6 +30,12 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
         super.init(environment: environment, url: url, placement: .tabRoot(.home))
     }
 
+    deinit {
+        // The splash's tray wait must not outlive Home (e.g. a Home root replaced after sign-in).
+        guard Thread.isMainThread else { return }
+        MainActor.assumeIsolated { trayWait?.invalidate() }
+    }
+
     override var headerHeight: CGFloat { isLoginContent ? 0 : HomeHeaderView.height }
     override var headerOverlaysContent: Bool { true }
     override var storiesSlot: Bool { true }

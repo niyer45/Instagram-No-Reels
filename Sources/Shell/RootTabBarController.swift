@@ -149,7 +149,7 @@ final class RootTabBarController: UIViewController {
         switch tab {
         case .search: root = SearchPageViewController(environment: environment, url: url, placement: .tabRoot(.search))
         case .profile: root = ProfilePageViewController(environment: environment, url: url, placement: .tabRoot(.profile))
-        case .home, .activity: root = environment.router.makePage(url, placement: .tabRoot(tab))
+        case .home, .activity: root = environment.router.makePage(url, placement: .tabRoot(tab), environment: environment)
         }
         if let home = root as? HomePageViewController {
             home.onLaunchReady = { [weak self] in self?.launchReady() }
