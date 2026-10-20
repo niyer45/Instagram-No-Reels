@@ -20,6 +20,8 @@ The simulator checks used the logged-out pages and `Tests/fixtures/home-feed.htm
 - [ ] On the login and sign-up pages, Terms, Privacy, Data Policy, Locations and "About" links push a page with a back chevron; nothing resets the tabs and you are not treated as signed in.
 - [ ] "Log in with Facebook" on the login page shows a short explanation instead of opening Facebook.
 - [ ] Sign out (with confirmation) returns every tab to Instagram's login; signing in again returns to the Following feed in all tabs.
+- [ ] Visit Search and Profile while signed out, then sign in on Home: Profile shows its native header (username, chevron, "+", menu with Sign out) and Search its caught-up state and Cancel, not a plain page header.
+- [ ] Switch between a tab showing the grey `/accounts/login/` page and a tab showing the dark logged-out landing: the status bar and tab bar follow the visible page each time (the page colour is only re-sent when it changes, so a stale colour is possible).
 
 ## Home
 
@@ -54,6 +56,8 @@ The simulator checks used the logged-out pages and `Tests/fixtures/home-feed.htm
 - [ ] After closing, the page underneath is exactly as before: Home with the tray in place, or the profile at the same scroll position, with no reload.
 - [ ] Tapping through a story and swiping sideways between people still work.
 - [ ] Tapping a username inside the viewer closes it and pushes that profile.
+- [ ] Open a story from a ring on a pushed profile and close it with Instagram's "X": you are back on that profile once, not on a second copy of it pushed on top (if Instagram's close navigates to the profile instead of going back, the Router pushes it again).
+- [ ] Swipe the Home viewer down: if it does not close by itself, the screen accepts taps again within about a second (the invisible container waits 1 s before dismissing).
 - [ ] "View story signed in?" prompts, if Instagram shows them, are confirmed automatically once.
 - [ ] Logged in, the Stories tray never turns the Home tab into a login page (e.g. after a long time in the background). If the tray lands on a login or "Save your login info?" (`/accounts/onetap/`) page, the tray disappears and Home stays on the feed.
 
@@ -76,6 +80,7 @@ The simulator checks used the logged-out pages and `Tests/fixtures/home-feed.htm
 - [ ] Open a post or profile from Home, from a profile and from the inbox, then swipe back: the page underneath still shows what it showed before (no copy of the opened page, no reset to the top). If it did reset or reload once, note which page.
 - [ ] Liking, following, opening the comment composer and expanding captions stay in the page (no push).
 - [ ] Profile Posts/Tagged switching stays in the page.
+- [ ] Open a profile's followers list, then swipe back: the profile shows no followers dialog left open underneath (if Instagram opens the list as an in-page dialog while the native push happens).
 - [ ] No blank strip between the native header and the profile header (or any page's content) on pushed pages; on Home the first post sits right under the Stories tray with no gap or overlap.
 - [ ] The web top bar is never visible on any page type.
 - [ ] Reels links and the profile Reels tab do nothing, silently (no alert, nothing opens).
@@ -125,6 +130,7 @@ The simulator checks used the logged-out pages and `Tests/fixtures/home-feed.htm
 - [ ] The chevron opens Instagram's account switcher if Instagram's page has one; otherwise nothing happens (no error).
 - [ ] "+" shows "Creating posts isn't available in this app."
 - [ ] Menu opens an action sheet: Settings and activity (pushes Instagram's settings; note which page `/accounts/edit/` shows and whether `/accounts/settings/` would be the better hub), Content filters (opens the sheet), Sign out (asks to confirm).
+- [ ] No blank strip between the native Profile header and your profile once the page has loaded and stopped changing.
 - [ ] Pull to refresh holds and settles like Home.
 - [ ] Profile header: 90 pt avatar, counts with bold numbers, bio, Edit profile / Share profile as two equal 32 pt rounded grey buttons.
 - [ ] Posts / Tagged strip with Instagram's icons and a line under the selected one; no Reels tab.
@@ -170,3 +176,4 @@ The simulator checks used the logged-out pages and `Tests/fixtures/home-feed.htm
 - [ ] After a long session across all four tabs (many pushes, story views), the app is not killed in the background more often than before.
 - [ ] With Home scrolled down, visit other tabs and use other heavy apps until iOS warns about memory (or use Xcode's Debug → Simulate Memory Warning on device): returning to Home reloads it near the previous scroll position where the reloaded feed is long enough; Search and Notifications reload their pages.
 - [ ] After such a memory warning, Search still hides the keyboard when you drag its results.
+- [ ] With a link open in the Safari sheet, trigger a memory warning, then close Safari: the page underneath comes back from its snapshot and reloads (it was off screen), never blank.
