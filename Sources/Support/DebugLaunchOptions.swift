@@ -4,7 +4,7 @@ import Foundation
 /// DEBUG-only launch environment for simulator screenshots and measurements, since agents
 /// cannot tap or sign in. Pass them with `SIMCTL_CHILD_` prefixes to `xcrun simctl launch`
 /// (Tools/simshots.sh does). Release builds exclude this.
-/// - `SHELL_TAB=home|search|activity|profile` selects the starting tab.
+/// - `SHELL_TAB=home|search|messages|profile` selects the starting tab.
 /// - `SHELL_SKELETON_PREVIEW=1` keeps every page on its skeleton (no web loads).
 /// - `SHELL_FAILURE_PREVIEW=1` shows every page's load-failure state (no web loads).
 /// - `SHELL_OPEN_URL=<instagram url>` opens that URL through the Router after launch.
@@ -20,7 +20,7 @@ import Foundation
 /// - `SHELL_HOME_FIXTURE` / `SHELL_HOME_DEMO`: Home's fixture harness (`HomeDemo`).
 enum DebugLaunchOptions {
     /// Surfaces `SHELL_PRESENT` opens: the Content filters sheet, the Profile action sheet, the
-    /// Notifications dot, the Search caught-up state, and Sign out without its confirmation (to
+    /// Home header's Notifications dot, the Search caught-up state, and Sign out without its confirmation (to
     /// check that the avatar cache is cleared).
     enum Surface: String {
         case filters, profileMenu = "profile-menu", unread, searchIdle = "search-idle", signOut = "signout"
@@ -34,7 +34,7 @@ enum DebugLaunchOptions {
         switch environment["SHELL_TAB"] {
         case "home": return .home
         case "search": return .search
-        case "activity": return .activity
+        case "messages": return .messages
         case "profile": return .profile
         default: return nil
         }

@@ -1,0 +1,132 @@
+<!doctype html>
+<!-- Variant of home-feed.html for the refresh hide: adds Instagram's fixed Following bar (with its padding spacer), an in-document
+     stories row, and a 4 s delay before the posts appear when the document is a reload (so a pull-to-refresh stays held long
+     enough to screenshot). Simulator fixture for the Home harness (Sources/Pages/HomeDemo.swift, DEBUG only).
+     An approximation of Instagram's m-web Following feed markup, built only from the
+     assumptions in docs/DOM-NOTES.md, so NativeSkin.css, Bridge.js and FeedFilter.js can be
+     exercised and screenshotted without signing in. The inline <style> stands in for
+     Instagram's own stylesheet (base font, link and button resets). Not bundled in the app. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Instagram</title>
+<style>
+  body { margin: 0; background: rgb(12, 16, 20); color: rgb(245, 245, 245);
+         font: 400 14px/18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  @media (prefers-color-scheme: light) { body { background: rgb(255, 255, 255); color: rgb(0, 0, 0); } }
+  a { color: inherit; text-decoration: none; }
+  button { background: none; border: 0; padding: 0; color: inherit; font: inherit; }
+  article { border: 1px solid rgba(128, 128, 128, 0.3); border-radius: 8px; margin: 0 8px 12px; }
+  header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; }
+  header img { width: 42px; height: 42px; border-radius: 50%; }
+  .media { width: 100%; aspect-ratio: 1 / 1; display: block; }
+  .actions { display: flex; align-items: center; padding: 4px 4px; }
+  .actions [role="button"] { padding: 8px; display: flex; }
+  .actions .spacer { flex: 1; }
+  svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; }
+  .body { padding: 0 12px 12px; }
+  .body > * { display: block; margin-top: 6px; }
+  .dots { display: flex; gap: 4px; padding: 6px; }
+  .dots span { width: 6px; height: 6px; border-radius: 50%; background: rgba(128, 128, 128, 0.6); }
+  .older { display: block; padding: 16px; text-align: center; }
+  .fbar { position: fixed; top: 0; left: 0; right: 0; height: 44px; z-index: 5; display: flex; align-items: center; justify-content: center; gap: 6px; background: rgb(12, 16, 20); }
+  @media (prefers-color-scheme: light) { .fbar { background: rgb(255, 255, 255); } }
+  .fbar svg { width: 12px; height: 12px; }
+  .fpad { padding-top: 44px; }
+  .srow { display: flex; gap: 14px; height: 100px; width: 100%; padding: 8px 12px; box-sizing: border-box; overflow: hidden; }
+  .srow a { flex: none; width: 72px; height: 72px; border-radius: 50%; background: linear-gradient(135deg, #f58529, #dd2a7b, #8134af); }
+  html.reloading .feed { display: none; }
+</style>
+<script>
+  // A reload (pull-to-refresh) shows the posts only after 4 s.
+  (function () {
+    const nav = performance.getEntriesByType('navigation')[0];
+    if (!window.__fixtureReload && (!nav || nav.type !== 'reload')) return; // the Home demo flags its re-load of the fixture
+    // The feed is taken out of the document as soon as it is parsed and put back after 4 s.
+    let feed = null, parent = null;
+    new MutationObserver(() => {
+      const el = document.querySelector('.feed');
+      if (!el || feed) return;
+      feed = el; parent = el.parentNode; el.remove();
+      setTimeout(() => parent.appendChild(feed), 4000);
+    }).observe(document, { childList: true, subtree: true });
+  })();
+</script>
+<script>
+  // Membership and dates as Instagram's own JSON would carry them (FeedFilter reads
+  // script[type="application/json"]): two recent posts by followed accounts, one older post.
+  (function () {
+    const now = Math.floor(Date.now() / 1000);
+    const item = (code, username, age) => ({ code, taken_at: now - age, media_type: 1, product_type: 'feed', is_ad: false, is_suggested: false,
+      user: { username, friendship_status: { following: true } } });
+    const data = { items: [item('AAAAAAAAAA1', 'alice', 3600 * 2), item('BBBBBBBBBB2', 'bob.travels', 3600 * 9), item('CCCCCCCCCC3', 'carol', 86400 * 4)] };
+    const script = document.createElement('script');
+    script.type = 'application/json';
+    script.textContent = JSON.stringify(data);
+    document.head.appendChild(script);
+  })();
+</script>
+</head>
+<body>
+<div class="fbar"><span>Following</span><svg viewBox="0 0 24 24" aria-label="Chevron"><path d="M6 9l6 6 6-6"/></svg></div>
+<div class="fpad">
+<div id="mount">
+  <main role="main">
+<div class="srow"><a href="/stories/user1/1/"></a><a href="/stories/user2/1/"></a><a href="/stories/user3/1/"></a><a href="/stories/user4/1/"></a><a href="/stories/user5/1/"></a></div>
+    <div class="feed">
+      <article>
+        <header>
+          <a href="/alice/"><img alt="alice's profile picture" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Crect width='10' height='10' fill='%23c13584'/%3E%3C/svg%3E"></a>
+          <div><a href="/alice/">alice</a> <span>•</span> <a href="/p/AAAAAAAAAA1/"><time datetime="2026-10-20T00:00:00.000Z">2h</time></a></div>
+        </header>
+        <img class="media" alt="Photo by alice" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cdefs%3E%3ClinearGradient id='g' x2='1' y2='1'%3E%3Cstop stop-color='%23405de6'/%3E%3Cstop offset='1' stop-color='%23fd1d1d'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='10' height='10' fill='url(%23g)'/%3E%3C/svg%3E">
+        <div class="dots" aria-hidden="true"><span></span><span></span><span></span></div>
+        <div class="actions">
+          <div role="button"><svg aria-label="Like" viewBox="0 0 24 24"><path d="M12 20s-8-5-8-11a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 6-8 11-8 11Z"/></svg></div>
+          <div role="button"><svg aria-label="Comment" viewBox="0 0 24 24"><path d="M20.7 16.7A9 9 0 1 1 12 3a9 9 0 0 1 8.7 13.7L22 22Z"/></svg></div>
+          <div role="button"><svg aria-label="Share Post" viewBox="0 0 24 24"><path d="M22 3 9.2 10.1M22 3l-7 18-5.8-10.9L2 3Z"/></svg></div>
+          <span class="spacer"></span>
+          <div role="button"><svg aria-label="Save" viewBox="0 0 24 24"><path d="M20 21 12 13.4 4 21V3h16Z"/></svg></div>
+        </div>
+        <div class="body">
+          <section><a href="/p/AAAAAAAAAA1/liked_by/"><span>1,204 likes</span></a></section>
+          <div><a href="/alice/">alice</a> <span>Golden hour on the pier</span></div>
+          <a href="/p/AAAAAAAAAA1/comments/">View all 38 comments</a>
+          <a href="/p/AAAAAAAAAA1/"><time datetime="2026-10-20T00:00:00.000Z">2 hours ago</time></a>
+          <form><textarea aria-label="Add a comment…" placeholder="Add a comment…"></textarea></form>
+        </div>
+      </article>
+      <article>
+        <header>
+          <a href="/bob.travels/"><img alt="bob.travels's profile picture" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Crect width='10' height='10' fill='%23f77737'/%3E%3C/svg%3E"></a>
+          <div><a href="/bob.travels/">bob.travels</a> <span>•</span> <a href="/p/BBBBBBBBBB2/"><time datetime="2026-10-19T17:00:00.000Z">9h</time></a></div>
+        </header>
+        <img class="media" alt="Photo by bob.travels" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Crect width='10' height='10' fill='%23264653'/%3E%3Ccircle cx='7' cy='3' r='1.5' fill='%23e9c46a'/%3E%3C/svg%3E">
+        <div class="actions">
+          <div role="button"><svg aria-label="Like" viewBox="0 0 24 24"><path d="M12 20s-8-5-8-11a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 6-8 11-8 11Z"/></svg></div>
+          <div role="button"><svg aria-label="Comment" viewBox="0 0 24 24"><path d="M20.7 16.7A9 9 0 1 1 12 3a9 9 0 0 1 8.7 13.7L22 22Z"/></svg></div>
+          <div role="button"><svg aria-label="Share Post" viewBox="0 0 24 24"><path d="M22 3 9.2 10.1M22 3l-7 18-5.8-10.9L2 3Z"/></svg></div>
+          <span class="spacer"></span>
+          <div role="button"><svg aria-label="Save" viewBox="0 0 24 24"><path d="M20 21 12 13.4 4 21V3h16Z"/></svg></div>
+        </div>
+        <div class="body">
+          <section><a href="/p/BBBBBBBBBB2/liked_by/"><span>87 likes</span></a></section>
+          <div><a href="/bob.travels/">bob.travels</a> <span>Night train north</span></div>
+          <a href="/p/BBBBBBBBBB2/comments/">View all 4 comments</a>
+          <a href="/p/BBBBBBBBBB2/"><time datetime="2026-10-19T17:00:00.000Z">9 hours ago</time></a>
+        </div>
+      </article>
+      <article>
+        <header>
+          <a href="/carol/"><img alt="carol's profile picture" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Crect width='10' height='10' fill='%232a9d8f'/%3E%3C/svg%3E"></a>
+          <div><a href="/carol/">carol</a> <span>•</span> <a href="/p/CCCCCCCCCC3/"><time datetime="2026-10-16T00:00:00.000Z">4d</time></a></div>
+        </header>
+        <img class="media" alt="Photo by carol" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Crect width='10' height='10' fill='%23555'/%3E%3C/svg%3E">
+      </article>
+    </div>
+  </main>
+</div>
+</div>
+</body>
+</html>

@@ -92,10 +92,10 @@ Default tabs, in Instagram's native order with the Reels slot removed:
 | --- | --- | --- |
 | Home | `/?variant=following` | Native header + stories tray; filtered feed |
 | Search | `/explore/` | Account search only; idle "caught up" state rendered natively |
-| Notifications | `/accounts/activity/` | Replaces Create (decision below) |
+| Messages | `/direct/inbox/` | Messenger glyph; title is the signed-in username; threads and the composer hide the tab bar; replaces Create (decision below) |
 | Profile | `/<own username>/` | Avatar glyph; tapping the selected tab scrolls to top, second tap reloads |
 
-**Create tab decision (Phase 1): replaced by Notifications.** m-web has no URL entry
+**Create tab decision (Phase 1): replaced by Messages.** Notifications moved to the Home header only (owner's choice, cycle 1). m-web has no URL entry
 point for creating a post. Its "New post" control is a button in the web bottom nav that
 opens a native file picker from JavaScript; the follow-up steps (`/create/style/`,
 `/create/details/`) only work with that in-memory selection. Logged-out probes (Oct 2026):
@@ -105,9 +105,9 @@ native Create tab could only work by script-clicking a hidden control, which is 
 reliable. The Router still classifies `/create/...` as `create` and presents it full screen
 if Instagram's own content ever navigates there. Revisit if m-web gains a create route.
 
-Notifications and Messages also live in the Home header (native parity) and push onto the
-Home stack. Tapping the selected tab: (1) if its page is scrolled down, scroll to top;
-(2) otherwise, if pages are pushed, pop to root; (3) otherwise Home, Notifications and
+Notifications lives in the Home header heart (it pushes on the Home stack and carries the
+unread dot); the header Messenger icon switches to the Messages tab. Tapping the selected tab: (1) if its page is scrolled down, scroll to top;
+(2) otherwise, if pages are pushed, pop to root; (3) otherwise Home, Messages and
 Profile reload with the skeleton (Home also reloads the Stories tray); Search does nothing
 more. The Profile tab waits on a skeleton until the bridge reports the signed-in username
 (cached between launches) and shows the login page when the session is signed out.
@@ -138,8 +138,9 @@ needed); only Home overlays its header on the web view, because it collapses wit
 
 Link interception rule: a navigation inside a page that changes `PageKind`, or targets a
 different post/profile than the current page, is cancelled in the web view and performed
-natively: **push** for content pages (post, profile, comments, likes, activity, inbox,
-thread, settings, other), **present full-screen** for `stories` and `create`, **replace
+natively: **push** for content pages (post, profile, comments, likes, activity, settings,
+other), **go to the Messages tab** for inbox (tab switch to its root) and thread and other
+`/direct/` pages (push on the Messages stack, switching to it first), **present full-screen** for `stories` and `create`, **replace
 root** for `login`. Same-page interactions (like, follow, open comment composer, expand
 caption, variant toggles) stay in the web view. Links are decided in the window's capturing
 click phase, before Instagram's own handlers.
@@ -192,7 +193,14 @@ header. Web `allowsBackForwardNavigationGestures` is off; history is the navigat
   release, a snapshot of the content below the spinner stays up while the document
   reloads; on `ready` the spinner ends and the snapshot (and the Home header) slide up by
   the held distance together, then the snapshot fades. While pulling, the Home header stays
-  put and the spinner shows in the gap below it (Phase 2: the native app does this; the
+  put and the spinner shows in the gap below it. The reloading document is never visible
+  before `ready`: native sets boot/layout `refreshing` before `reload()`, `NativeSkin.css`
+  makes `html[data-native-refreshing] body` transparent (the page colour still paints; a
+  25 s failsafe in `Bridge.js` clears it), and native clears it on `ready` (and on every
+  cancel path) before the settle starts. The live tray host is hidden (alpha 0) while the
+  snapshot shows the previous tray, and returns at settle. Instagram's own stories row in
+  the feed document (`data-native-stories-row`) is hidden whenever the native tray is active
+  (`html[data-native-stories="tray"]`), so there is never a second row (Phase 2: the native app does this; the
   Phase 1 header sliding down under the spinner did not match).
 - Tray placement: `StoriesTrayHost` is a subview of the feed web view's `scrollView` at the
   document position FeedFilter reports for the slot (`storiesSlot`), so it scrolls with
@@ -233,9 +241,10 @@ Removed (Phase 1): `scroll {y, dy}`. Native observes the web view's
 bridge scroll stream would only add latency and message traffic.
 
 Native -> page uses `window.__instagram.policy(json)`, `window.__instagram.refresh()` and
-`window.__instagram.layout({headerHeight, storiesHeight, hideChrome})` (CSS variables and
-whether web chrome is hidden), all exposed from `Bridge.js`. Per-web-view values that must
-exist at document start (role `page`/`tray`, header height, stories slot, policy) are in
+`window.__instagram.layout({headerHeight, storiesHeight, hideChrome, refreshing})` (CSS variables,
+whether web chrome is hidden, and whether the reloading document is held invisible for a
+refresh), all exposed from `Bridge.js`. Per-web-view values that must
+exist at document start (role `page`/`tray`, header height, stories slot and height, `refreshing`, policy) are in
 `window.__instagramBoot`. Phase 2 adds `window.__instagramTray.closeViewer()` (tray web view)
 and `window.__instagramTabs` (`switchAccount`, `unread`, `cancelSearch`, `hasSearchField`) for
 the Home story viewer and the Search, Notifications and Profile tabs; no new message types.
@@ -288,7 +297,11 @@ off screen at a memory warning, unload behind a snapshot and reload when shown.
 - Selectors: document every Instagram DOM assumption in `docs/DOM-NOTES.md` with the
   selector, what it finds, and the fallback when it fails.
 - Diagnostics: DEBUG only, counts and enumerated reasons only. Never log usernames, post
-  content, cookies, or request bodies.
+  content, cookies, or request bodies. DEBUG builds also write sanitized Home page
+  outlines (`Library/Caches/page-outline-<capture>-<n>.json`, last 6; captures `ready`,
+  `ready-3s`, `refresh-start`, `refresh-loading`, `refresh-end`, `scrolled`) with structure only:
+  tags, roles, allowlisted ARIA labels, our data-* names, positions, rects and href shapes; no
+  text, URLs or usernames; extra `main` (outline rooted at `main`) and `bars` (nav/header/fixed/sticky subtrees) sections (`hrefShape`, `outlineTree` in Bridge.js, tested in `Tests/outline.test.cjs`).
 - Commits: small, imperative subject, body says *why*. Run the checks in §5 before every
   commit.
 

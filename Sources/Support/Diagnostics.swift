@@ -81,6 +81,41 @@ enum Diagnostics {
         return Date(timeIntervalSince1970: TimeInterval(start.tv_sec) + TimeInterval(start.tv_usec) / 1_000_000)
     }()
 
+    // MARK: Page outlines
+
+    private static let outlineCaptures: Set<String> = ["ready", "ready-3s", "refresh-start", "refresh-loading", "refresh-end", "scrolled"]
+    @MainActor private static var outlineSequence: Int?
+
+    /// Sequence number of an outline file name (`page-outline-<capture>-<n>.json`).
+    private static func outlineNumber(_ name: String) -> Int? {
+        guard name.hasPrefix("page-outline-"), name.hasSuffix(".json") else { return nil }
+        let stem = name.dropLast(".json".count)
+        guard let last = stem.split(separator: "-").last else { return nil }
+        return Int(last)
+    }
+
+    /// Writes a sanitized page outline (structure only) to Caches/page-outline-<capture>-<n>.json and keeps the 6 newest.
+    /// `n` continues after the highest number already on disk, so relaunches do not overwrite earlier files.
+    @MainActor
+    static func writeOutline(_ outline: [String: Any], native: [String: Any] = [:], capture: String) {
+        guard outlineCaptures.contains(capture),
+              let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
+        let manager = FileManager.default
+        try? manager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let existing = ((try? manager.contentsOfDirectory(atPath: directory.path)) ?? []).compactMap { name in outlineNumber(name).map { (name, $0) } }
+        let n = outlineSequence ?? ((existing.map { $0.1 }.max() ?? 0) + 1)
+        outlineSequence = n + 1
+        var document: [String: Any] = ["capture": capture, "n": n, "time": ISO8601DateFormatter().string(from: Date()), "page": outline]
+        for (key, value) in native { document[key] = value }
+        guard JSONSerialization.isValidJSONObject(document),
+              let data = try? JSONSerialization.data(withJSONObject: document, options: [.sortedKeys, .prettyPrinted]) else { return }
+        try? data.write(to: directory.appendingPathComponent("page-outline-\(capture)-\(n).json"), options: [.atomic])
+        let all = existing + [("page-outline-\(capture)-\(n).json", n)]
+        for (name, _) in all.sorted(by: { $0.1 > $1.1 }).dropFirst(6) {
+            try? manager.removeItem(at: directory.appendingPathComponent(name))
+        }
+    }
+
     @MainActor
     private static func append(_ event: [String: Any]) {
         events.append(event)

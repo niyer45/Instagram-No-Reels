@@ -118,20 +118,18 @@ final class RootTabBarController: UIViewController {
         refreshUnread()
     }
 
-    /// Instagram's unread-activity dot on the Notifications tab, read from the Home page's (hidden)
+    /// Instagram's unread-activity dot on the Home header heart, read from the Home page's (hidden)
     /// web header through `window.__instagramTabs.unread()` (docs/DOM-NOTES.md, Notifications).
-    /// Viewing Notifications clears it; no dot when the page exposes no indicator.
+    /// Tapping the heart clears it; no dot when the page exposes no indicator.
     private func refreshUnread() {
-        if selectedTab == .activity { tabBar.setBadge(false, on: .activity); return }
         guard let home = homePage, home.isViewLoaded else { return }
         home.webView.evaluateJavaScript("window.__instagramTabs?window.__instagramTabs.unread():false") { [weak self] result, _ in
-            guard let self, self.selectedTab != .activity else { return }
-            self.tabBar.setBadge(result as? Bool == true, on: .activity)
+            self?.homePage?.setActivityBadge(result as? Bool == true)
         }
     }
 
     /// Tapping the selected tab: scroll to top; at the top, pop to root; at the root's top,
-    /// Home, Notifications and Profile reload (Search does nothing more).
+    /// Home, Messages and Profile reload (Search does nothing more).
     private func reselect(_ tab: TabItem) {
         let navigation = selectedNavigation
         if let page = navigation.topViewController as? WebPageViewController, page.scrollToTop() { return }
@@ -172,7 +170,6 @@ final class RootTabBarController: UIViewController {
         }
         navigations = [:]
         environment.filterStatus.reset()
-        tabBar.setBadge(false, on: .activity)
         show(.home)
     }
 
@@ -193,7 +190,7 @@ final class RootTabBarController: UIViewController {
             case .profileMenu:
                 self.show(.profile)
                 (self.navigations[.profile]?.viewControllers.first as? ProfilePageViewController)?.showMenu()
-            case .unread: self.tabBar.setBadge(true, on: .activity)
+            case .unread: self.homePage?.setActivityBadge(true)
             case .searchIdle:
                 self.show(.search)
                 (self.navigations[.search]?.viewControllers.first as? SearchPageViewController)?.debugShowIdle(top: 52)

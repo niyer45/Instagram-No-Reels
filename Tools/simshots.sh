@@ -32,15 +32,15 @@ shot() {
   xcrun simctl io "$UDID" screenshot "$OUT/$name.png" >/dev/null 2>&1 && echo "$OUT/$name.png"
 }
 
-for tab in home search activity profile; do
+for tab in home search messages profile; do
   shot "skeleton-$tab" 6 SHELL_TAB=$tab SHELL_SKELETON_PREVIEW=1
 done
-for tab in home search activity profile; do
+for tab in home search messages profile; do
   shot "tab-$tab" "$WAIT" SHELL_TAB=$tab
 done
 shot pushed-profile "$WAIT" SHELL_OPEN_URL="$PUSHED_URL"
 shot failure-home 6 SHELL_FAILURE_PREVIEW=1
 shot failure-pushed 7 SHELL_FAILURE_PREVIEW=1 SHELL_OPEN_URL="$PUSHED_URL"
-shot offline-banner 6 SHELL_OFFLINE=60 SHELL_TAB=activity SHELL_SKELETON_PREVIEW=1
+shot offline-banner 6 SHELL_OFFLINE=60 SHELL_TAB=messages SHELL_SKELETON_PREVIEW=1
 shot offline-banner-home 6 SHELL_OFFLINE=60 SHELL_SKELETON_PREVIEW=1
 xcrun simctl terminate "$UDID" "$BUNDLE" >/dev/null 2>&1

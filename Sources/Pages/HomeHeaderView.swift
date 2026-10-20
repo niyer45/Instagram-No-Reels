@@ -8,6 +8,7 @@ final class HomeHeaderView: UIView {
 
     private let wordmark = WordmarkView()
     private let content = UIView()
+    private let activityBadge = UIView()
     var onActivity: (() -> Void)?
     var onMessages: (() -> Void)?
 
@@ -15,6 +16,12 @@ final class HomeHeaderView: UIView {
         super.init(frame: frame)
         let heart = PageHeaderView.iconButton(.heart, label: "Notifications") { [weak self] in self?.onActivity?() }
         let messenger = PageHeaderView.iconButton(.messenger, label: "Messages") { [weak self] in self?.onMessages?() }
+        activityBadge.backgroundColor = InstagramTabBar.badgeColor
+        activityBadge.layer.cornerRadius = 2.5
+        activityBadge.isHidden = true
+        activityBadge.isUserInteractionEnabled = false
+        activityBadge.frame = CGRect(x: 19.5, y: 35, width: 5, height: 5)
+        heart.addSubview(activityBadge)
         let buttons = UIStackView(arrangedSubviews: [heart, messenger])
         buttons.spacing = 0
         for view in [content, wordmark, buttons] { view.translatesAutoresizingMaskIntoConstraints = false }
@@ -40,6 +47,9 @@ final class HomeHeaderView: UIView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    /// Instagram's unread-activity dot, centred under the heart glyph like the tab bar's dots.
+    func setActivityBadge(_ visible: Bool) { activityBadge.isHidden = !visible }
 
     /// The captured wordmark; nil keeps the bundled one.
     func setWordmark(_ shape: WordmarkShape?) { wordmark.shape = shape }

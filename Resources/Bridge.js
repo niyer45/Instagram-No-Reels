@@ -103,7 +103,90 @@ function shapePath(tag,attr){
 }
 /** Avatar URLs must be Instagram CDN images. */
 function avatarURL(src){try{const u=new URL(src);return u.protocol==='https:'&&/(^|\.)(cdninstagram\.com|fbcdn\.net)$/.test(u.hostname)?u.href:null;}catch(_){return null;}}
-if(typeof module!=='undefined'&&module.exports){module.exports={classify,decide,readiness,official,opaqueRGB,surfaceRGB,avatarURL,shapePath};return;}
+/** Route words that may appear in a link shape; every other path segment is reduced to a placeholder. */
+const ROUTE_VOCAB=new Set(['p','reel','reels','tv','stories','highlights','direct','t','inbox','new','requests','explore','tags','locations','people','search','keyword','accounts','activity','edit','login','onetap','emailsignup','signup','password','change','reset','privacy_and_security','settings','notifications','tagged','saved','followers','following','liked_by','comments','c','audio','about','legal','privacy','terms','web','lite','create','style','details','challenge','your_activity','interactions','u','_u','profile','two_factor','checkpoint']);
+const VARIANT_VALUES=new Set(['following','home','past_posts','favorites']);
+/** Reduces a link to its shape (DEBUG outline): route words kept, handles, codes, ids and query values replaced. Never returns user content. */
+function hrefShape(href){
+ if(typeof href!=='string')return null;const raw=href.trim();if(!raw)return null;
+ if(raw[0]==='#')return '#';
+ const scheme=raw.match(/^([a-z][a-z0-9+.-]*):/i);
+ if(scheme){const s=scheme[1].toLowerCase();if(s==='javascript')return '<script>';if(s!=='http'&&s!=='https')return '<scheme>';}
+ let u;try{u=new URL(raw,'https://www.instagram.com/');}catch(_){return '<external>';}
+ if(!official(u.href))return '<external>';
+ const parts=u.pathname.split('/').filter(Boolean),out=[];
+ parts.forEach((seg,i)=>{const s=seg.toLowerCase(),prev=i?parts[i-1].toLowerCase():'';
+  out.push(i===0?(ROUTE_VOCAB.has(s)?s:'<user>'):prev==='p'||prev==='reel'||prev==='tv'?'<code>':prev==='stories'&&s!=='highlights'?'<user>':prev==='tags'?'<tag>':/^\d+$/.test(s)?'<id>':ROUTE_VOCAB.has(s)?s:'<x>');});
+ const query=[];u.searchParams.forEach((v,k)=>query.push(k+'='+(k==='variant'&&VARIANT_VALUES.has(v)?v:'<v>')));
+ return '/'+(out.length?out.join('/')+'/':'')+(query.length?'?'+query.join('&'):'');
+}
+const SAFE_LABELS=new Set(['Back','Home','Search','Explore','Reels','Messenger','Messages','Direct','Notifications','Activity Feed','New post','Create','Instagram','Close','Loading','Options','More','More options','Settings','Like','Unlike','Comment','Share','Share Post','Save','Remove','Down chevron icon','Chevron','Following','For you','Favorites','Stories','Carousel','Next','Previous','Go back','Play','Pause','Audio','Tags','Verified','Sponsored']);
+/** An aria-label if it is a known fixed UI label, else `<other>` (labels often carry usernames); null when absent. */
+function safeLabel(label){if(label==null||label==='')return null;return SAFE_LABELS.has(label)?label:'<other>';}
+const OUTLINE_SKIP=new Set(['script','style','link','meta','noscript','template']);
+const OUTLINE_UI=new Set(['Following','For you','Favorites']);
+const OUTLINE_DATA=['data-native-','data-following-','data-instagram-'];
+/** Structure-only outline of a DOM tree (DEBUG diagnostics): tags, roles, allowlisted labels, our own data-* names,
+    positions, rects and link shapes. Reads no other attribute and outputs no text. `env.indexes` (a Map) receives node -> index. */
+function outlineTree(body,env){
+ const {styleOf,rectOf,maxNodes=400,maxDepth=12,indexes}=env,nodes=[];let truncated=false;
+ const kinds=new Map();
+ function kindOf(node){if(kinds.has(node))return kinds.get(node);const tag=String(node.tagName||'').toLowerCase();let k=tag==='img'?1:tag==='video'?2:tag==='article'?4:0;
+  for(const c of Array.from(node.children||[]))k|=kindOf(c);kinds.set(node,k);return k;}
+ function visit(node,depth){
+  const tag=String(node.tagName||'').toLowerCase();if(OUTLINE_SKIP.has(tag))return;
+  if(nodes.length>=maxNodes){truncated=true;return;}
+  const children=Array.from(node.children||[]),css=styleOf(node)||{},e={i:nodes.length,d:depth,tag};
+  const role=node.getAttribute('role');if(role)e.role=String(role).slice(0,24);
+  const aria=safeLabel(node.getAttribute('aria-label'));if(aria!==null)e.aria=aria;
+  const data=Array.from(node.getAttributeNames?node.getAttributeNames():[]).filter(n=>OUTLINE_DATA.some(p=>n.startsWith(p)));if(data.length)e.data=data;
+  const hidden=node.getAttribute('data-native-hidden');if(hidden)e.hidden=hidden;
+  e.pos=css.position;if(css.position==='fixed'||css.position==='sticky'){e.top=css.top;e.z=css.zIndex;}
+  if(css.display==='none'||css.visibility==='hidden'||css.opacity==='0')e.vis=0;
+  if(css.opacity!==undefined&&css.opacity!=='1')e.opacity=css.opacity;
+  const r=rectOf(node)||{};e.rect=[r.x,r.y,r.width,r.height].map(v=>Math.round(Number(v)||0));
+  const k=kindOf(node),has=(k&1?'i':'')+(k&2?'v':'')+(k&4?'a':'');if(has)e.has=has;
+  e.n=children.length;
+  if(tag==='a')e.href=hrefShape(node.getAttribute('href'));
+  if(!children.length){const t=node.textContent;if(typeof t==='string'&&t.length<=24){const s=t.trim();if(s.length<=12&&OUTLINE_UI.has(s))e.ui=s;}}
+  if(indexes)indexes.set(node,e.i);
+  nodes.push(e);
+  if(tag==='svg'||depth>=maxDepth)return;
+  for(const c of children){if(truncated)return;visit(c,depth+1);}
+ }
+ if(body)visit(body,0);
+ return {nodes,truncated};
+}
+/** Marked elements of the outline (null when absent). `indexOf(node)` gives the outline index or -1. */
+function outlineMarks(doc,indexOf,env){
+ const sel={topBar:'[data-native-hidden="header"]',bottomNav:'[data-native-hidden="tabbar"]',headerSpacer:'[data-native-header-spacer]',storiesSlot:'[data-instagram-stories-slot]',followingBar:'[data-native-hidden="following-bar"]',storiesRow:'[data-native-stories-row]'},marks={};
+ for(const k of Object.keys(sel)){const node=doc.querySelector(sel[k]);if(!node){marks[k]=null;continue;}
+  const css=env.styleOf(node)||{},r=env.rectOf(node)||{};
+  marks[k]={i:indexOf(node),tag:String(node.tagName||'').toLowerCase(),pos:css.position,rect:[r.x,r.y,r.width,r.height].map(v=>Math.round(Number(v)||0))};}
+ return marks;
+}
+/** Extra DEBUG outline sections: `main` (outline rooted at <main>) and `bars` (nav/header/navigation and fixed/sticky elements, small subtrees).
+    `bodyTree`/`bodyIndexes` come from the body outline made with the same env. Same sanitizer, so no text, no raw URLs. */
+function outlineSections(doc,env,bodyTree,bodyIndexes){
+ const mainNode=doc.querySelector('main'),mainIndexes=new Map();
+ const mainTree=mainNode?outlineTree(mainNode,{...env,indexes:mainIndexes,maxNodes:400,maxDepth:12}):null;
+ const picked=new Map(),add=(node,kind)=>{if(picked.size<12&&!picked.has(node))picked.set(node,kind);};
+ for(const node of doc.querySelectorAll('nav,header,[role="navigation"]')){
+  if(node.closest&&node.closest('article'))continue;
+  add(node,String(node.tagName||'').toLowerCase()==='header'?'header':'nav');
+ }
+ const fromOutline=(tree,indexes)=>{if(!tree||!indexes)return;
+  for(const [node,i] of indexes){const e=tree.nodes[i];if(e&&(e.pos==='fixed'||e.pos==='sticky'))add(node,e.pos);}};
+ fromOutline(bodyTree,bodyIndexes);fromOutline(mainTree,mainIndexes);
+ const bars=[];
+ for(const [node,kind] of picked){
+  const css=env.styleOf(node)||{},r=env.rectOf(node)||{},hidden=node.getAttribute('data-native-hidden');
+  bars.push({kind,rect:[r.x,r.y,r.width,r.height].map(v=>Math.round(Number(v)||0)),pos:css.position,hidden:hidden||null,
+   nodes:outlineTree(node,{...env,indexes:undefined,maxNodes:60,maxDepth:6}).nodes});
+ }
+ return {main:mainTree,bars};
+}
+if(typeof module!=='undefined'&&module.exports){module.exports={classify,decide,readiness,official,opaqueRGB,surfaceRGB,avatarURL,shapePath,hrefShape,safeLabel,outlineTree,outlineMarks,outlineSections};return;}
 if(window.top!==window||!official(location.href))return;
 
 const boot=window.__instagramBoot||{};const role=boot.role==='tray'?'tray':'page';
@@ -111,21 +194,38 @@ const started=typeof performance!=='undefined'&&performance.now?performance.now(
 function now(){return typeof performance!=='undefined'&&performance.now?performance.now():Date.now();}
 function post(type,payload){try{window.webkit.messageHandlers.instagram.postMessage(Object.assign({},payload||{},{type}));}catch(_){}}
 const listeners={policy:[],refresh:[]};let policy=boot.policy||null;
-let layout={headerHeight:boot.headerHeight||0,storiesHeight:boot.storiesHeight||0,hideChrome:!!boot.hideChrome};
+let layout={headerHeight:boot.headerHeight||0,storiesHeight:boot.storiesHeight||0,hideChrome:!!boot.hideChrome,refreshing:!!boot.refreshing};
+// Refresh: native sets `refreshing` while a reload is held behind a snapshot, so the reloading document stays invisible
+// (NativeSkin.css). If native never clears it, the document reveals itself after REFRESH_FAILSAFE_MS.
+const REFRESH_FAILSAFE_MS=25000;let refreshTimer=null;
+function armRefreshFailsafe(){if(refreshTimer!==null||!layout.refreshing)return;refreshTimer=setTimeout(()=>{refreshTimer=null;layout.refreshing=false;applyLayout();},REFRESH_FAILSAFE_MS);}
+function setAttr(root,name,value){if(value===null){if(root.getAttribute(name)!==null&&root.removeAttribute)root.removeAttribute(name);}else if(root.getAttribute(name)!==value)root.setAttribute(name,value);}
 function applyLayout(){const root=document.documentElement;if(!root)return false;
  root.style.setProperty('--native-header-height',(Number(layout.headerHeight)||0)+'px');
  root.style.setProperty('--native-stories-height',(Number(layout.storiesHeight)||0)+'px');
  if(root.getAttribute('data-native-chrome')!==(layout.hideChrome?'hidden':'web'))root.setAttribute('data-native-chrome',layout.hideChrome?'hidden':'web');
- if(root.getAttribute('data-native-role')!==role)root.setAttribute('data-native-role',role);return true;}
+ if(root.getAttribute('data-native-role')!==role)root.setAttribute('data-native-role',role);
+ setAttr(root,'data-native-refreshing',layout.refreshing?'':null);
+ if(!layout.refreshing&&refreshTimer!==null){clearTimeout(refreshTimer);refreshTimer=null;}
+ if(role==='page')setAttr(root,'data-native-stories',boot.storiesSlot===true&&Number(layout.storiesHeight)>0?'tray':null);
+ return true;}
 window.__instagram=Object.freeze({
  policy(value){let p=value;if(typeof p==='string'){try{p=JSON.parse(p);}catch(_){return;}}if(!p||typeof p!=='object')return;policy=p;for(const f of listeners.policy){try{f(p);}catch(_){}}},
  refresh(){for(const f of listeners.refresh){try{f();}catch(_){}}},
- layout(values){if(values&&typeof values==='object'){for(const k of ['headerHeight','storiesHeight'])if(Number.isFinite(values[k]))layout[k]=Math.max(0,Math.min(400,values[k]));if(typeof values.hideChrome==='boolean')layout.hideChrome=values.hideChrome;}applyLayout();},
+ layout(values){if(values&&typeof values==='object'){for(const k of ['headerHeight','storiesHeight'])if(Number.isFinite(values[k]))layout[k]=Math.max(0,Math.min(400,values[k]));if(typeof values.hideChrome==='boolean')layout.hideChrome=values.hideChrome;if(typeof values.refreshing==='boolean'){layout.refreshing=values.refreshing;armRefreshFailsafe();}}applyLayout();},
  on(name,f){if(listeners[name]&&typeof f==='function')listeners[name].push(f);},
+ /** DEBUG diagnostics: sanitized structure of the page (see outlineTree); null in the tray. */
+ outline(){if(role!=='page')return null;
+  try{const root=document.documentElement,css=getComputedStyle.bind(window),env={styleOf:n=>css(n),rectOf:n=>n.getBoundingClientRect(),indexes:new Map()};
+   const tree=outlineTree(document.body,env),sections=outlineSections(document,env,tree,env.indexes),prop=k=>root.style.getPropertyValue(k),q=hrefShape('/'+location.search)||'';
+   return {route:{kind:classify(location.pathname).kind,search:q.includes('?')?q.slice(q.indexOf('?')):''},viewport:{w:window.innerWidth,h:window.innerHeight},scroll:{x:Math.round(window.scrollX),y:Math.round(window.scrollY)},documentHeight:Math.round(root.scrollHeight),
+    layout:{headerHeight:prop('--native-header-height'),storiesHeight:prop('--native-stories-height'),chrome:root.getAttribute('data-native-chrome'),page:root.getAttribute('data-native-page'),stories:root.getAttribute('data-native-stories'),refreshing:root.getAttribute('data-native-refreshing')!==null},
+    marks:outlineMarks(document,n=>env.indexes.has(n)?env.indexes.get(n):-1,env),outline:tree.nodes,truncated:tree.truncated,main:sections.main,bars:sections.bars};
+  }catch(_){return {error:'exception'};}},
  post,
  get currentPolicy(){return policy;}
 });
-applyLayout();
+applyLayout();armRefreshFailsafe();
 
 // Routes: report every document and history change; hand page changes to native.
 let lastRoute='',webTitle='';
@@ -270,6 +370,144 @@ function findBanners(){
  }
  return found;
 }
+
+// Following-feed web bar (Home only): the variant's top bar has no wordmark or Back icon, so findTopBar misses it. It shows
+// when the native header collapses (scroll) and in the pull-to-refresh gap. Seeds on the "Following" label, then on
+// whatever fixed/sticky full-width bar sits at the viewport top. Marked "following-bar" (not "header", which would stop
+// findTopBar from finding the wordmark header). Selector notes: docs/DOM-NOTES.md.
+const BAR_STOP='main,article,[role="combobox"],a[href^="/stories/"],a[href^="https://www.instagram.com/stories/"],[data-following-approved],[data-instagram-stories-slot],img,video';
+const BAR_SKIP='article,[data-following-approved],[role="dialog"],[role="menu"],[data-native-hidden]';
+let followingBar=null,lastBarSearch=-Infinity,lastBarProbe=-Infinity,barTimer=0;
+// A subtree blocks the Following-bar match when it holds a stop element or a RENDERED text field (hidden / zero-size inputs,
+// e.g. the display:none forms inside the observed bar, do not block).
+function barBlocked(node){
+ if(node.querySelector(BAR_STOP))return true;
+ for(const el of node.querySelectorAll('input,textarea')){
+  const type=String(el.getAttribute('type')||'').toLowerCase();
+  if(el.tagName.toLowerCase()==='input'&&(type==='hidden'||type==='file'||type==='checkbox'||type==='radio'))continue;
+  const r=el.getBoundingClientRect();if(!(r.width>0&&r.height>0))continue;
+  const cs=getComputedStyle(el);if(cs.display==='none'||cs.visibility==='hidden')continue;
+  return true;
+ }
+ return false;
+}
+function isHome(){return classify(location.pathname).kind==='home';}
+function barScrollY(){return Number(window.scrollY)||Number(window.pageYOffset)||0;}
+function barQualifies(node,fixedOnly){
+ if(!node||node===document.body||node===document.documentElement||node.hasAttribute('data-native-hidden')||node.hasAttribute('data-native-story-tray'))return false;
+ const r=node.getBoundingClientRect(),width=window.innerWidth||0,limit=(Number(layout.headerHeight)||0)+64;
+ if(!(r.width>=width*0.9&&r.height>=30&&r.height<=90))return false;
+ const viewportTop=r.top>=-2&&r.top<=limit,documentTop=r.top+barScrollY()>=-2&&r.top+barScrollY()<=limit;
+ if(fixedOnly){if(!viewportTop)return false;const p=getComputedStyle(node).position;if(p!=='fixed'&&p!=='sticky')return false;}
+ else if(!viewportTop&&!documentTop)return false;
+ return true;
+}
+function markFollowingBar(node){
+ const r=node.getBoundingClientRect();
+ node.setAttribute('data-native-bar-height',String(Math.round(r.height)));
+ node.setAttribute('data-native-hidden','following-bar');
+ followingBar=node;return node;
+}
+function findFollowingBarByPoint(){
+ if(typeof document.elementsFromPoint!=='function')return null;
+ const width=window.innerWidth||0;
+ for(const y of [2,20]){
+  let stack;try{stack=document.elementsFromPoint(width/2,y)||[];}catch(_){stack=[];}
+  for(const el of stack){
+   let node=el;
+   for(let depth=0;node&&depth<8&&node!==document.body&&node!==document.documentElement;depth++,node=node.parentElement){
+    if(barBlocked(node))break;
+    if(barQualifies(node,true))return node;
+   }
+  }
+ }
+ return null;
+}
+const NAV_SEL='nav,[role="navigation"]';
+function navPrecedesMain(nav){
+ for(let sib=nav.nextElementSibling;sib;sib=sib.nextElementSibling){if(String(sib.tagName).toLowerCase()==='main'||sib.querySelector('main'))return true;}
+ return false;
+}
+function navOk(nav){return !nav.closest(BAR_SKIP)&&!barBlocked(nav)&&navPrecedesMain(nav)&&barQualifies(nav,false);}
+// The in-flow nav placeholder (45 px) that wraps the fixed bar must be the marked node, else it stays as a blank strip.
+function upgradeToNav(node){
+ if(!node||String(node.tagName).toLowerCase()==='nav')return node;
+ let nav=node.parentElement;
+ for(let depth=0;nav&&depth<8&&nav!==document.body&&nav!==document.documentElement;depth++,nav=nav.parentElement){
+  if(nav.matches(NAV_SEL)&&navOk(nav)){
+   node.removeAttribute('data-native-hidden');node.removeAttribute('data-native-bar-height');
+   return markFollowingBar(nav);
+  }
+ }
+ return node;
+}
+function findFollowingBar(){
+ if(!layout.hideChrome||typeof getComputedStyle!=='function')return null;
+ if(followingBar&&followingBar.isConnected&&followingBar.getAttribute('data-native-hidden')==='following-bar')return followingBar=upgradeToNav(followingBar);
+ followingBar=null;
+ const marked=document.querySelector('[data-native-hidden="following-bar"]');if(marked){followingBar=upgradeToNav(marked);return followingBar;}
+ // Structural nav seed first: an in-flow nav above the feed (observed: section > nav 402x45 before main, wrapping the fixed bar).
+ for(const nav of document.querySelectorAll(NAV_SEL)){
+  if(navOk(nav))return markFollowingBar(nav);
+ }
+ const seeds=[];
+ for(const el of document.querySelectorAll('span,h1,h2,p,div,[aria-label="Following"]')){
+  if(el.getAttribute('aria-label')==='Following'){seeds.push(el);continue;}
+  if(el.children&&el.children.length===0&&(el.textContent||'').trim()==='Following')seeds.push(el);
+ }
+ for(const seed of seeds){
+  if(seed.closest(BAR_SKIP))continue;
+  let best=null,node=seed;
+  for(let depth=0;node&&depth<=8&&node!==document.body&&node!==document.documentElement;depth++,node=node.parentElement){
+   if(barBlocked(node))break;
+   if(barQualifies(node,false))best=node;
+  }
+  if(best)return markFollowingBar(upgradeToNav(best));
+ }
+ const byPoint=findFollowingBarByPoint();
+ return byPoint?markFollowingBar(upgradeToNav(byPoint)):null;
+}
+function scanFollowingBar(){
+ if(!layout.hideChrome||!isHome())return;
+ if(followingBar&&followingBar.isConnected&&followingBar.getAttribute('data-native-hidden')==='following-bar'){followingBar=upgradeToNav(followingBar);return;}
+ const t=now();
+ if(t>lastBarSearch&&t-lastBarSearch<300){
+  if(!barTimer)barTimer=setTimeout(()=>{barTimer=0;scanFollowingBar();},Math.max(0,300-(t-lastBarSearch))+1);
+  return;
+ }
+ lastBarSearch=t;
+ findFollowingBar();
+}
+function probeFollowingBar(){
+ if(!layout.hideChrome||!isHome()||(followingBar&&followingBar.isConnected))return;
+ const t=now();if(t>lastBarProbe&&t-lastBarProbe<100)return;lastBarProbe=t;
+ const node=findFollowingBarByPoint();if(node)markFollowingBar(node);
+}
+
+// Instagram's own stories row inside the feed document (Home page role): marked so NativeSkin.css hides it while the native
+// tray is active (html[data-native-stories="tray"]). Items are story links/buttons outside cards; the row is the outermost
+// ancestor (<= 7 up) that is 40-190 px tall, wide, holds >= 2 items and no post, card, slot or main. Selector notes: docs/DOM-NOTES.md.
+const STORY_ITEMS='a[href^="/stories/"],a[href^="https://www.instagram.com/stories/"],button[aria-label*="story" i],[role="button"][aria-label*="story" i]';
+const STORY_ITEM_SKIP='article,[data-following-approved],[data-native-hidden],[role="dialog"]';
+const STORY_ROW_EXCLUDE='article,a[href*="/p/"],[data-following-approved],[data-instagram-stories-slot],main';
+function scanStoriesRow(){
+ if(role!=='page'||!isHome())return;
+ for(const old of document.querySelectorAll('[data-native-stories-row]'))
+  if(!old.isConnected||old.querySelector(STORY_ROW_EXCLUDE))old.removeAttribute('data-native-stories-row');
+ if(document.querySelector('[data-native-stories-row]'))return;
+ const items=[...document.querySelectorAll(STORY_ITEMS)].filter(i=>!i.closest(STORY_ITEM_SKIP));
+ if(items.length<2)return;
+ const width=window.innerWidth||0,found=[];
+ for(const item of items){
+  let best=null,node=item.parentElement;
+  for(let depth=0;node&&depth<7&&node!==document.body&&node!==document.documentElement;depth++,node=node.parentElement){
+   const r=node.getBoundingClientRect();
+   if(r.height>=40&&r.height<=190&&r.width>=width*0.6&&items.filter(i=>node.contains(i)).length>=2&&!node.querySelector(STORY_ROW_EXCLUDE))best=node;
+  }
+  if(best&&!found.includes(best))found.push(best);
+ }
+ for(const row of found)if(!found.some(o=>o!==row&&o.contains(row)))row.setAttribute('data-native-stories-row','');
+}
 let lastAvatar='';
 function scanChrome(){
  const kind=classify(location.pathname).kind;
@@ -287,8 +525,10 @@ function scanChrome(){
   if(header){if(header.getAttribute('data-native-hidden')!=='header')header.setAttribute('data-native-hidden','header');
    const heading=header.querySelector('h1,h2,[role="heading"]');const text=(heading&&heading.textContent||'').trim();
    if(text&&text.length<=80&&text!==webTitle){webTitle=text;postRoute();}}
+  scanFollowingBar();
  }
  for(const banner of findBanners())if(!banner.hasAttribute('data-native-hidden'))banner.setAttribute('data-native-hidden','banner');
+ scanStoriesRow();
 }
 
 /** Instagram's top bar is position:fixed and the element right after it reserves the bar's height with padding-top
@@ -303,6 +543,22 @@ function markHeaderSpacers(){
   if(!spacer||spacer.hasAttribute('data-native-header-spacer')||getComputedStyle(hidden).position!=='fixed')continue;
   const padding=parseFloat(getComputedStyle(spacer).paddingTop)||0;
   if(padding>=30&&padding<=120)spacer.setAttribute('data-native-header-spacer','');
+ }
+ for(const bar of document.querySelectorAll('[data-native-hidden="following-bar"]')){
+  const position=getComputedStyle(bar).position,fixed=position==='fixed';
+  const spacer=bar.nextElementSibling;
+  if(fixed&&spacer&&!spacer.hasAttribute('data-native-header-spacer')){
+   const padding=parseFloat(getComputedStyle(spacer).paddingTop)||0;
+   if(padding>=30&&padding<=120)spacer.setAttribute('data-native-header-spacer','');
+  }
+  if(!fixed&&position!=='sticky')continue;
+  const height=Number(bar.getAttribute('data-native-bar-height'))||0;if(!height)continue;
+  for(const sibling of [bar.nextElementSibling,bar.previousElementSibling]){
+   if(!sibling||sibling.hasAttribute('data-native-hidden')||sibling.hasAttribute('data-native-header-spacer'))continue;
+   if(sibling.children&&sibling.children.length)continue;
+   if((sibling.textContent||'').trim())continue;
+   if(Math.abs(sibling.getBoundingClientRect().height-height)<=2)sibling.setAttribute('data-native-hidden','following-spacer');
+  }
  }
 }
 
@@ -601,6 +857,7 @@ if(role==='page')window.__instagramTabs=Object.freeze({
 let chromeQueued=false;
 function onMutation(){
  if(role==='tray'){scanTray();return;}
+ if(followingBar&&layout.hideChrome&&(!followingBar.isConnected||followingBar.getAttribute('data-native-hidden')!=='following-bar')&&isHome()){followingBar=null;findFollowingBar();}
  queueFrame();
  if(!chromeQueued){chromeQueued=true;const run=()=>{chromeQueued=false;applyLayout();scanChrome();scanTabs();markHeaderSpacers();requestTheme();postRoute();};
   if(typeof requestAnimationFrame==='function')requestAnimationFrame(run);else setTimeout(run,16);}
@@ -608,5 +865,6 @@ function onMutation(){
 new MutationObserver(onMutation).observe(document,{childList:true,subtree:true});
 document.addEventListener('DOMContentLoaded',onMutation);
 window.addEventListener('load',onMutation);
+if(role==='page')window.addEventListener('scroll',probeFollowingBar,{passive:true});
 postRoute();onMutation();
 })();

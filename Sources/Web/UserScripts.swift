@@ -11,6 +11,8 @@ enum UserScripts {
         var hideChrome = true
         var storiesSlot = false
         var storiesHeight: CGFloat = 0
+        /// A refresh reload is held behind a snapshot: the reloading document stays invisible until native clears this.
+        var refreshing = false
     }
 
     private static let bridgeSource = resource("Bridge", "js")
@@ -18,7 +20,7 @@ enum UserScripts {
     private static let skinSource = resource("NativeSkin", "css")
 
     static func scripts(boot: Boot, policy: [String: Any]) -> [WKUserScript] {
-        let values: [String: Any] = ["role": boot.role.rawValue, "headerHeight": Double(boot.headerHeight), "hideChrome": boot.hideChrome, "storiesSlot": boot.storiesSlot, "storiesHeight": Double(boot.storiesHeight), "policy": policy]
+        let values: [String: Any] = ["role": boot.role.rawValue, "headerHeight": Double(boot.headerHeight), "hideChrome": boot.hideChrome, "storiesSlot": boot.storiesSlot, "storiesHeight": Double(boot.storiesHeight), "refreshing": boot.refreshing, "policy": policy]
         var sources = ["window.__instagramBoot=Object.freeze(\(json(values)));", skinInstaller(), bridgeSource]
         if boot.role == .page { sources.append(filterSource) }
         return sources.map { WKUserScript(source: $0, injectionTime: .atDocumentStart, forMainFrameOnly: true) }

@@ -15,6 +15,9 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
     private weak var viewer: ModalContainerController?
     private var trayWait: Timer?
     private var launchReported = false
+    /// Whether the user opened Notifications since the Home document last became ready; Instagram's own indicator in
+    /// that document does not update, so the dot stays hidden until the page reloads.
+    private var activitySeen = false
     /// Fires once when the feed and its tray (or the login page) are ready to be revealed.
     var onLaunchReady: (() -> Void)?
 
@@ -25,6 +28,11 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
     private var travel: CGFloat = 0
     private var heldPull: CGFloat?
     private static let collapseThreshold: CGFloat = 8
+    #if DEBUG
+    /// Outline capture state: bumped at each ready and refresh start so delayed captures of an older page are skipped.
+    private var outlineGeneration = 0
+    private var scrolledCaptured = false
+    #endif
 
     init(environment: AppEnvironment, url: URL?) {
         super.init(environment: environment, url: url, placement: .tabRoot(.home))
@@ -67,11 +75,18 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
     }
 
     override func installHeader() {
-        homeHeader.onActivity = { [weak self] in self?.openPath("/accounts/activity/") }
+        homeHeader.onActivity = { [weak self] in
+            self?.activitySeen = true
+            self?.homeHeader.setActivityBadge(false)
+            self?.openPath("/accounts/activity/")
+        }
         homeHeader.onMessages = { [weak self] in self?.openPath("/direct/inbox/") }
         homeHeader.setWordmark(WordmarkShape.cached())
         view.addSubview(homeHeader)
     }
+
+    /// Shows or hides the unread-activity dot under the header heart.
+    func setActivityBadge(_ visible: Bool) { homeHeader.setActivityBadge(visible && !activitySeen) }
 
     private func openPath(_ path: String) {
         guard let url = URL(string: "https://www.instagram.com" + path) else { return }
@@ -150,6 +165,12 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
         }
         // Near the top the header can only be pushed up as far as the content has moved.
         setCollapse(min(collapse, y))
+        #if DEBUG
+        if !scrolledCaptured, collapse >= height, y > 300 {
+            scrolledCaptured = true
+            captureOutline("scrolled")
+        }
+        #endif
     }
 
     private func setCollapse(_ value: CGFloat) {
@@ -189,16 +210,30 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
     // MARK: Refresh hold
 
     override func refreshWillBegin(hold: CGFloat) {
+        #if DEBUG
+        outlineGeneration += 1
+        captureOutline("refresh-start")
+        let generation = outlineGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            guard let self, self.outlineGeneration == generation, self.isRefreshing else { return }
+            self.captureOutline("refresh-loading")
+        }
+        #endif
         heldPull = hold
         setCollapse(0)
+        // The snapshot shows the previous tray in place; the live one reloads out of sight.
+        tray.alpha = 0
         tray.load()
     }
 
     override func refreshSettle() {
         setCollapse(0)
+        // Under the sliding snapshot; where the snapshot fades the live tray is at the same place.
+        UIView.performWithoutAnimation { tray.alpha = 1 }
     }
 
     override func refreshDidFinish() {
+        UIView.performWithoutAnimation { tray.alpha = 1 }
         heldPull = nil
         travel = 0
     }
@@ -226,6 +261,21 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
     // MARK: Launch readiness (splash)
 
     private func feedReady() {
+        activitySeen = false
+        #if DEBUG
+        scrolledCaptured = false
+        if isRefreshing {
+            captureOutline("refresh-end")
+        } else {
+            outlineGeneration += 1
+            let generation = outlineGeneration
+            captureOutline("ready")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+                guard let self, self.outlineGeneration == generation, !self.isRefreshing else { return }
+                self.captureOutline("ready-3s")
+            }
+        }
+        #endif
         if isLoginContent || tray.isMeasured { reportLaunchReady(); return }
         trayWait?.invalidate()
         trayWait = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
@@ -241,6 +291,39 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
         launchReported = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in self?.onLaunchReady?() }
     }
+
+    #if DEBUG
+    /// Writes a sanitized page outline plus native layout numbers (no URLs, text or usernames).
+    private func captureOutline(_ capture: String) {
+        guard !isLoginContent else { return }
+        let script = "window.__instagram&&window.__instagram.outline?window.__instagram.outline():null"
+        webView.evaluateJavaScript(script) { [weak self] result, _ in
+            guard let outline = result as? [String: Any] else { return }
+            Task { @MainActor in
+                guard let self else { return }
+                let scrollView = self.webView.scrollView
+                let native: [String: Any] = [
+                    "contentOffsetY": Int(scrollView.contentOffset.y.rounded()),
+                    "adjustedInsetTop": Int(scrollView.adjustedContentInset.top.rounded()),
+                    "webViewFrame": Self.ints(self.webView.frame),
+                    "headerCollapse": Double(self.collapse),
+                    "headerHeight": Double(HomeHeaderView.height),
+                    "trayFrame": Self.ints(self.tray.frame),
+                    "trayHidden": self.tray.isHidden,
+                    "trayAlpha": Double(self.tray.alpha),
+                    "trayMeasured": self.tray.isMeasured,
+                    "slotTop": self.slotTop.map { Double($0) as Any } ?? NSNull(),
+                    "trayHeight": Double(self.trayHeight),
+                    "isReady": self.isReady,
+                    "isLoginContent": self.isLoginContent,
+                    "refreshingBoot": self.currentBoot.refreshing,
+                    "refresh": self.debugRefreshState,
+                ]
+                Diagnostics.writeOutline(outline, native: native, capture: capture)
+            }
+        }
+    }
+    #endif
 
     // MARK: StoriesTrayHostDelegate
 

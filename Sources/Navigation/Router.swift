@@ -20,7 +20,7 @@ final class Router {
         guard policy == .allow else { report(policy); return }
         guard let shell, let environment else { return }
         let route = Route(url: url)
-        let presentation = Presentation(kind: route.kind)
+        let presentation = Presentation(route: route)
         if presentation == .block { report(.blockReels); return }
 
         // A tab root on Instagram's login page opens where Instagram goes after signing in in place. Whether that
@@ -45,6 +45,20 @@ final class Router {
             shell.select(.home, popToRoot: true)
         case .searchTab:
             shell.select(.search, popToRoot: true)
+        case .messagesTab:
+            shell.select(.messages, popToRoot: true)
+        case .messagesPush:
+            let next = makePage(url, placement: .pushed, environment: environment)
+            if let navigation = page?.navigationController as? PageNavigationController, navigation.tabItem == .messages {
+                navigation.pushViewController(next, animated: true)
+            } else {
+                // Switch without an animated pop: a pop and a push in flight on one stack corrupt it.
+                shell.select(.messages, popToRoot: false)
+                let navigation = shell.selectedNavigation
+                if navigation.viewControllers.count > 1 { navigation.popToRootViewController(animated: false) }
+                navigation.pushViewController(next, animated: true)
+            }
+            Haptics.push()
         case .push:
             let navigation = (page?.navigationController as? PageNavigationController) ?? shell.selectedNavigation
             navigation.pushViewController(makePage(url, placement: .pushed, environment: environment), animated: true)
@@ -141,7 +155,7 @@ final class Router {
         switch tab {
         case .home: return .home
         case .search: return .search
-        case .activity: return .activity
+        case .messages: return .inbox
         case .profile: return .profile
         }
     }

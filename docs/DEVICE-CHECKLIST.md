@@ -15,7 +15,7 @@ The simulator checks used the logged-out pages and `Tests/fixtures/home-feed.htm
 - [ ] Signed in, the first page after launch is the Following feed with working links (tapping a profile pushes it); nothing behaves as if the first page were "still loading" (the pre-warmed feed is adopted by Home).
 - [ ] Status bar, Home header and tab bar use Instagram's dark surface with no white or grey flashes on launch, tab switches or pushes.
 - [ ] On the login page the status bar and tab bar match its grey surface; after signing in everything returns to Instagram dark, and nothing stays light or grey across relaunches.
-- [ ] Sign-in from the Home tab (including "Save your login info?") ends on the Following feed with the native header and Stories tray, not a login page left in the Home tab; Search, Notifications and Profile that showed login show their own pages afterwards without a further reset.
+- [ ] Sign-in from the Home tab (including "Save your login info?") ends on the Following feed with the native header and Stories tray, not a login page left in the Home tab; Search, Messages and Profile that showed login show their own pages afterwards without a further reset.
 - [ ] Right after signing in (or after Sign out, then sign in), tapping Profile at once shows your profile, not a skeleton that never ends.
 - [ ] On the login and sign-up pages, Terms, Privacy, Data Policy, Locations and "About" links push a page with a back chevron; nothing resets the tabs and you are not treated as signed in.
 - [ ] "Log in with Facebook" on the login page shows a short explanation instead of opening Facebook.
@@ -30,7 +30,8 @@ The simulator checks used the logged-out pages and `Tests/fixtures/home-feed.htm
 - [ ] The native header shows Instagram's real wordmark (not the script-font fallback) on the very first launch, about 103 pt wide and 16 pt from the left edge; it does not change size when the captured one replaces it. Heart and Messenger sit 16 pt from the right edge, 20 pt apart.
 - [ ] Scrolling down less than about 8 pt does nothing; scrolling further slides the header away with the content, and scrolling up brings it back. Releasing mid-way snaps it fully shown or fully hidden (a flick follows its direction). At the top of the feed it is always fully shown, it never covers the status bar, and there is no stutter.
 - [ ] Re-tapping Home while scrolled down brings the header back at once as the feed scrolls to the top.
-- [ ] Heart pushes Notifications; Messenger pushes the inbox, both with a back chevron and title.
+- [ ] Scrolling down and back up on Home never shows Instagram's web "Following" bar (or any web bar) under or instead of the native header; nor does pull to refresh.
+- [ ] Heart pushes Notifications on Home with a back chevron and title; Messenger switches to the Messages tab (no second inbox).
 - [ ] Home's skeleton gives way as soon as the first post at the top is shown, rather than after the whole feed loads; the top of the feed is never blank after the skeleton goes.
 
 ### Feed
@@ -46,6 +47,7 @@ The simulator checks used the logged-out pages and `Tests/fixtures/home-feed.htm
 ### Pull to refresh
 
 - [ ] The header stays put and the native spinner shows in the gap below it, above the tray. After release the pulled distance holds until the new feed is ready, then header, tray and posts settle up together with no blank flash; the tray keeps showing the previous stories (no grey rings flash) until the new tray is measured.
+- [ ] During the refresh there is exactly one stories row (the previous one, in the snapshot; no second row from Instagram's page or the reloading tray), no Instagram web bar or any web content in the gap under the header, and the previous feed stays until the new one is ready. Repeat with a slow connection (Network Link Conditioner) and with Airplane Mode (the page must not stay blank).
 
 ## Stories
 
@@ -65,10 +67,10 @@ The simulator checks used the logged-out pages and `Tests/fixtures/home-feed.htm
 
 ### Tab bar
 
-- [ ] Four tabs: Home, Search, Notifications, Profile. No web tab bar is visible on any page (Home, Search, Profile, post, inbox, thread, settings).
-- [ ] Unselected tabs show outline glyphs; the selected one is filled (Home, Notifications) or bold (Search).
+- [ ] Four tabs: Home, Search, Messages, Profile. No web tab bar is visible on any page (Home, Search, Profile, post, inbox, thread, settings).
+- [ ] Unselected tabs show outline glyphs; the selected one is filled (Home, Messages with the bolt knocked out) or bold (Search).
 - [ ] Tab switches keep each tab's page and scroll position (scroll Home, visit Search and Profile, come back).
-- [ ] Re-tapping the selected tab scrolls to top; again pops pushed pages; again at the root reloads Home, Notifications and Profile behind a skeleton. Search does nothing more.
+- [ ] Re-tapping the selected tab scrolls to top; again pops pushed pages; again at the root reloads Home, Messages and Profile behind a skeleton. Search does nothing more.
 - [ ] A light haptic (selection tick) on tab changes and on pushes; going back has no haptic.
 
 ### Pushed pages
@@ -109,12 +111,21 @@ The simulator checks used the logged-out pages and `Tests/fixtures/home-feed.htm
 - [ ] Submitting a keyword search (`/explore/search/keyword/?q=…`) pushes a results page titled with the query, with a back chevron; nothing strands you without a back control.
 - [ ] No Explore media grid anywhere on the Search tab.
 
+## Messages tab
+
+- [ ] The tab shows the inbox with your username as the title and a compose button; no web header under it.
+- [ ] Opening a thread pushes it on the Messages tab and hides the tab bar; back returns with the bar.
+- [ ] The Home header Messenger icon switches to the Messages tab (no second inbox).
+- [ ] The Home heart pushes Notifications on Home; its red dot shows for unread activity and clears after opening.
+- [ ] Re-tapping Messages scrolls to top, then pops to the inbox, then reloads.
+- [ ] Pull to refresh on the inbox.
+
 ## Notifications
 
-- [ ] While signed in, the header reads "Notifications" and stays that way, with no web header under it. Opening Notifications or Settings never signs you out or resets the tabs.
+- [ ] Opened from the Home heart, the pushed header reads "Notifications", with no web header under it. Opening Notifications or Settings never signs you out or resets the tabs.
 - [ ] Rows: 44 pt round avatar, bold username, grey time, and a trailing 44 pt post thumbnail or a 32 pt rounded Follow (blue) / Following (grey) button, vertically centred.
 - [ ] Pull to refresh holds and settles like Home.
-- [ ] When Instagram has unread activity, a small red dot appears under the Notifications heart within about 30 s (or on the next tab change); it clears when you open Notifications. Note whether the dot ever shows; if never, Instagram's m-web header exposes no indicator (DOM-NOTES, Unread activity).
+- [ ] When Instagram has unread activity, a small red dot appears under the Home header heart within about 30 s (or on the next tab change); it clears when you tap the heart. Note whether the dot ever shows; if never, Instagram's m-web header exposes no indicator (DOM-NOTES, Unread activity).
 
 ## Profile
 
@@ -174,6 +185,6 @@ The simulator checks used the logged-out pages and `Tests/fixtures/home-feed.htm
 
 - [ ] Push five or more pages in one tab (profile → post → profile → post → profile …), then swipe back one at a time: every page comes back with its content (deep pages briefly show their last image, then reload), and swipe-back keeps working.
 - [ ] After a long session across all four tabs (many pushes, story views), the app is not killed in the background more often than before.
-- [ ] With Home scrolled down, visit other tabs and use other heavy apps until iOS warns about memory (or use Xcode's Debug → Simulate Memory Warning on device): returning to Home reloads it near the previous scroll position where the reloaded feed is long enough; Search and Notifications reload their pages.
+- [ ] With Home scrolled down, visit other tabs and use other heavy apps until iOS warns about memory (or use Xcode's Debug → Simulate Memory Warning on device): returning to Home reloads it near the previous scroll position where the reloaded feed is long enough; Search and Messages reload their pages.
 - [ ] After such a memory warning, Search still hides the keyboard when you drag its results.
 - [ ] With a link open in the Safari sheet, trigger a memory warning, then close Safari: the page underneath comes back from its snapshot and reloads (it was off screen), never blank.
