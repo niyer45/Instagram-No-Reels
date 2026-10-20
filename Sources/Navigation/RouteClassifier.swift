@@ -45,7 +45,9 @@ struct Route: Equatable {
             self.init(kind: second.isEmpty || second == "inbox" ? .inbox : .other, identity: second.isEmpty || second == "inbox" ? "" : normal)
             return
         case "accounts":
-            if Self.loginAccounts.contains(second) { self.init(kind: .login); return }
+            // /accounts/password/change/ is a signed-in settings page; /accounts/password/reset/ is login.
+            let changesPassword = second == "password" && parts.count > 2 && parts[2].lowercased() == "change"
+            if Self.loginAccounts.contains(second), !changesPassword { self.init(kind: .login); return }
             if second == "activity" { self.init(kind: .activity); return }
             self.init(kind: .settings, identity: normal)
             return

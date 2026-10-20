@@ -30,7 +30,8 @@ function classify(pathname){
  if(first==='stories')return {kind:'stories',identity:''};
  if(first==='create')return {kind:'create',identity:''};
  if(first==='direct'){if(second==='t'&&parts[2])return {kind:'thread',identity:parts[2]};if(!second||second==='inbox')return {kind:'inbox',identity:''};return other;}
- if(first==='accounts'){if(LOGIN_ACCOUNTS.has(second))return {kind:'login',identity:''};if(second==='activity')return {kind:'activity',identity:''};return {kind:'settings',identity:normal(parts)};}
+ // /accounts/password/change/ is a signed-in settings page; /accounts/password/reset/ is login.
+ if(first==='accounts'){if(LOGIN_ACCOUNTS.has(second)&&!(second==='password'&&(parts[2]||'').toLowerCase()==='change'))return {kind:'login',identity:''};if(second==='activity')return {kind:'activity',identity:''};return {kind:'settings',identity:normal(parts)};}
  if(LOGIN_ROOTS.has(first))return {kind:'login',identity:''};
  if(first==='notifications')return {kind:'activity',identity:''};
  if(first==='settings')return {kind:'settings',identity:normal(parts)};
