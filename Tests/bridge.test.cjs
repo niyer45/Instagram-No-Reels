@@ -1,7 +1,7 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
-const {classify,decide,readiness,official,opaqueRGB,avatarURL}=require('../Resources/Bridge.js');
+const {classify,decide,readiness,official,opaqueRGB,avatarURL,shapePath}=require('../Resources/Bridge.js');
 const fixtures=JSON.parse(fs.readFileSync(path.join(__dirname,'route-fixtures.json'),'utf8'));
 const source=fs.readFileSync(path.join(__dirname,'../Resources/Bridge.js'),'utf8');
 
@@ -134,4 +134,25 @@ test('the web tab bar is hidden and reports the signed-in avatar; the web header
  assert.deepEqual(p.of('avatar'),[{type:'avatar',url:avatar.currentSrc,username:'me'}]);
  assert.equal(p.of('route').at(-1).title,'Friend Name');
  p.listeners.mutation();p.flush(1);assert.equal(p.of('avatar').length,1);
+});
+test('wordmark shapes convert polygons and rects to path data and reject malformed points',()=>{
+ const attrs=o=>k=>o[k];
+ assert.equal(shapePath('path',attrs({d:'M0 0L1 1'})),'M0 0L1 1');
+ assert.equal(shapePath('POLYGON',attrs({points:'0 106.31 15.08 106.31 15.08 8.46 0 11.82'})),'M0 106.31L15.08 106.31L15.08 8.46L0 11.82Z');
+ assert.equal(shapePath('polyline',attrs({points:'0,0 2,3'})),'M0 0L2 3');
+ assert.equal(shapePath('rect',attrs({x:'1',y:'2',width:'3',height:'4'})),'M1 2H4V6H1Z');
+ for(const bad of [shapePath('polygon',attrs({points:'1 2 3'})),shapePath('polygon',attrs({points:'a b c d'})),shapePath('rect',attrs({width:'0',height:'4'})),shapePath('circle',attrs({}))])assert.equal(bad,null);
+});
+test('login content on any route (password form or logged-out landing) is reported as ready login',()=>{
+ for(const [selector,path] of [['input[type="password"]','/?variant=following'],['a[href^="/accounts/login"]','/'],['a[href="/u/profile/"]','/?variant=following']]){
+  const p=page({path});p.document.querySelector=s=>s.includes(selector)?{}:null;
+  p.flush(7);assert.deepEqual(p.of('ready'),[{type:'ready',kind:'login'}],path);
+ }
+ const landing=page({path:'/?variant=following'});const login={textContent:' Log in ',closest:()=>null};
+ landing.document.querySelectorAll=s=>s==='button,[role="button"]'?[{textContent:'Open Instagram',closest:()=>null},login]:[];
+ landing.flush(7);assert.deepEqual(landing.of('ready'),[{type:'ready',kind:'login'}]);
+ const menu=page({path:'/alice/'});menu.document.querySelectorAll=s=>s==='button,[role="button"]'?[{textContent:'Log in',closest:()=>({})}]:[];
+ menu.flush(7);assert.equal(menu.of('ready').length,0);
+ const signedIn=page({path:'/'});signedIn.document.querySelector=s=>s.includes('a[href^="/accounts/login"]')||s==='article'?{}:null;
+ signedIn.flush(7);assert.equal(signedIn.of('ready').length,0);
 });

@@ -75,9 +75,18 @@ function readiness(kind,probe){
 }
 /** Stable key for a theme colour, or null for transparent / unparsable values. */
 function opaqueRGB(value){const m=String(value||'').match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/);return m&&(!m[4]||Number(m[4])===1)?m.slice(1,4).map(Number):null;}
+/** SVG path data for a wordmark shape element (path, polygon, polyline or rect); null when unusable. */
+function shapePath(tag,attr){
+ tag=String(tag||'').toLowerCase();
+ if(tag==='path')return attr('d')||null;
+ if(tag==='polygon'||tag==='polyline'){const n=String(attr('points')||'').trim().split(/[\s,]+/).map(Number);if(n.length<4||n.length%2||n.some(x=>!Number.isFinite(x)))return null;
+  let d='M'+n[0]+' '+n[1];for(let i=2;i<n.length;i+=2)d+='L'+n[i]+' '+n[i+1];return tag==='polygon'?d+'Z':d;}
+ if(tag==='rect'){const [x,y,w,h]=['x','y','width','height'].map(k=>Number(attr(k)||0));if(!(w>0&&h>0)||![x,y].every(Number.isFinite))return null;return 'M'+x+' '+y+'H'+(x+w)+'V'+(y+h)+'H'+x+'Z';}
+ return null;
+}
 /** Avatar URLs must be Instagram CDN images. */
 function avatarURL(src){try{const u=new URL(src);return u.protocol==='https:'&&/(^|\.)(cdninstagram\.com|fbcdn\.net)$/.test(u.hostname)?u.href:null;}catch(_){return null;}}
-if(typeof module!=='undefined'&&module.exports){module.exports={classify,decide,readiness,official,opaqueRGB,avatarURL};return;}
+if(typeof module!=='undefined'&&module.exports){module.exports={classify,decide,readiness,official,opaqueRGB,avatarURL,shapePath};return;}
 if(window.top!==window||!official(location.href))return;
 
 const boot=window.__instagramBoot||{};const role=boot.role==='tray'?'tray':'page';
@@ -85,7 +94,7 @@ const started=typeof performance!=='undefined'&&performance.now?performance.now(
 function now(){return typeof performance!=='undefined'&&performance.now?performance.now():Date.now();}
 function post(type,payload){try{window.webkit.messageHandlers.instagram.postMessage(Object.assign({},payload||{},{type}));}catch(_){}}
 const listeners={policy:[],refresh:[]};let policy=boot.policy||null;
-let layout={headerHeight:boot.headerHeight||0,storiesHeight:0,hideChrome:!!boot.hideChrome};
+let layout={headerHeight:boot.headerHeight||0,storiesHeight:boot.storiesHeight||0,hideChrome:!!boot.hideChrome};
 function applyLayout(){const root=document.documentElement;if(!root)return false;
  root.style.setProperty('--native-header-height',(Number(layout.headerHeight)||0)+'px');
  root.style.setProperty('--native-stories-height',(Number(layout.storiesHeight)||0)+'px');
@@ -134,7 +143,7 @@ function probe(kind){
  const loading=!!main&&[...main.querySelectorAll('[role="progressbar"],[data-visualcompletion="loading-state"],svg[aria-label^="Loading"]')].some(visible);
  const mainMedia=!!main&&!!main.querySelector('img,video');
  return {complete,elapsed:now()-started,loading,mainMedia,
-  loginForm:!!document.querySelector('input[type="password"],input[name="username"]'),
+  loginForm:!!document.querySelector('input[type="password"],input[name="username"]')||loggedOutLanding(),
   approvedPosts:kind==='home'?document.querySelectorAll('[data-following-approved="yes"]').length:0,
   caughtUp:!!document.querySelector('[data-instagram-caught-up]'),
   articles:main?main.querySelectorAll('article').length:0,
@@ -142,11 +151,21 @@ function probe(kind){
   mainContent:!!main&&(mainMedia||(main.textContent||'').trim().length>0),
   searchStable:kind==='search'?probeSearch(complete):false};
 }
+// Instagram's logged-out landing: placeholder /u/ tab links, a "Log in" button, or a login link without posts.
+function loggedOutLanding(){
+ if(document.querySelector('a[href="/u/profile/"],a[href="/u/direct/"]'))return true;
+ if(document.querySelector('a[href^="/accounts/login"],a[href^="https://www.instagram.com/accounts/login"]')&&!document.querySelector('article'))return true;
+ return [...document.querySelectorAll('button,[role="button"]')].some(b=>/^log in$/i.test((b.textContent||'').trim())&&!(b.closest&&b.closest('[role="menu"],[role="dialog"]')));
+}
 function checkReady(){
  frameQueued=false;if(readySent||role!=='page')return;
  const kind=classify(location.pathname).kind;
- if(readiness(kind,probe(kind)))readyFrames++;else readyFrames=0;
- if(readyFrames>=READY_STABLE_FRAMES||(kind==='search'&&readyFrames>0)){readySent=true;postTheme();post('ready',{kind});return;}
+ const state=probe(kind);
+ if(readiness(kind,state))readyFrames++;else readyFrames=0;
+ // Login content reports kind "login" whatever the route, so native hides page chrome over it.
+ if(readyFrames>=READY_STABLE_FRAMES||(kind==='search'&&readyFrames>0)){readySent=true;postTheme();post('ready',{kind:state.loginForm?'login':kind});
+  // Stylesheets can restyle the page after first paint without DOM mutations; re-sample the surface.
+  for(const delay of [300,1000,2500])setTimeout(postTheme,delay);return;}
  if(now()-started<GIVE_UP_MS)queueFrame();
 }
 function queueFrame(){if(frameQueued)return;frameQueued=true;if(typeof requestAnimationFrame==='function')requestAnimationFrame(checkReady);else setTimeout(checkReady,16);}
@@ -154,7 +173,12 @@ function queueFrame(){if(frameQueued)return;frameQueued=true;if(typeof requestAn
 // Theme: mirror the page background to native surfaces.
 let lastTheme='';
 function postTheme(){if(typeof getComputedStyle!=='function')return;
- for(const node of [document.body,document.documentElement]){if(!node)continue;const rgb=opaqueRGB(getComputedStyle(node).backgroundColor);
+ // The visible full-width surface at the top of the viewport (it meets the native status bar), then body/html.
+ // elementsFromPoint returns the whole stack, including fixed background layers that are not ancestors.
+ const width=window.innerWidth||0;
+ const stack=typeof document.elementsFromPoint==='function'?document.elementsFromPoint(width/2,2):[];
+ const nodes=stack.filter(node=>{const r=node.getBoundingClientRect?node.getBoundingClientRect():null;return r&&r.width>=width*0.9;}).slice(0,16);
+ for(const node of [...nodes,document.body,document.documentElement]){if(!node)continue;const rgb=opaqueRGB(getComputedStyle(node).backgroundColor);
   if(rgb){const key=rgb.join(',');if(key!==lastTheme){lastTheme=key;post('theme',{backgroundRGB:rgb});}return;}}}
 
 // Web chrome: mark Instagram's tab bar, top bar and app banners so NativeSkin.css hides them.
@@ -163,14 +187,15 @@ function findTabBar(){
  const marked=document.querySelector('[data-native-hidden="tabbar"]');if(marked)return marked;
  const height=window.innerHeight||0;
  for(const seed of document.querySelectorAll('a[href="/explore/"],a[href="https://www.instagram.com/explore/"]')){
-  let node=seed.parentElement;
+  // The outermost bar-sized wrapper, so the bar's own border and background go too.
+  let best=null,node=seed.parentElement;
   for(let depth=0;node&&depth<8&&node!==document.body;depth++,node=node.parentElement){
    if(node.querySelector('main,article'))break;
-   const links=[...node.querySelectorAll('a[href]')].map(pathOf);
-   if(!links.includes('/'))continue;
    const r=node.getBoundingClientRect();
-   if(r.height>0&&r.height<130&&r.top>height*0.6)return node;
+   if(!(r.height>0&&r.height<130&&r.top>height*0.6))continue;
+   if([...node.querySelectorAll('a[href]')].map(pathOf).includes('/'))best=node;
   }
+  if(best)return best;
  }
  return null;
 }
@@ -251,7 +276,7 @@ function scanTray(){
   if(key!==lastTray){lastTray=key;post('storiesTray',{height:Math.ceil(tray.getBoundingClientRect().height),items:items.length});}
  }
  const wordmark=document.querySelector('svg[aria-label="Instagram"]');
- if(wordmark){const paths=[...wordmark.querySelectorAll('path')].slice(0,12).map(p=>({d:p.getAttribute('d')||'',evenOdd:(p.getAttribute('fill-rule')||p.getAttribute('clip-rule'))==='evenodd'})).filter(p=>p.d&&p.d.length<=20000);
+ if(wordmark){const paths=[...wordmark.querySelectorAll('path,polygon,polyline,rect')].slice(0,12).map(p=>({d:shapePath(p.tagName,k=>p.getAttribute(k))||'',evenOdd:(p.getAttribute('fill-rule')||p.getAttribute('clip-rule'))==='evenodd'})).filter(p=>p.d&&p.d.length<=20000);
   const viewBox=wordmark.getAttribute('viewBox')||'';const key=viewBox+paths.length+(paths[0]?paths[0].d.length:0);
   if(paths.length&&viewBox&&key!==lastWordmark){lastWordmark=key;post('wordmark',{viewBox,paths});}}
 }
