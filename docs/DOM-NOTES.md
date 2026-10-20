@@ -38,7 +38,7 @@ FeedFilter's own `login` status (`input[type="password"]`, or no posts/records a
 
 | Kind | Ready when | Fallback |
 | --- | --- | --- |
-| home | `[data-following-approved="yes"]` (FeedFilter approved a post) or `[data-instagram-caught-up]` | Document complete + 8 s |
+| home | The first post card in document order (`[data-following-approved]`, skipping cards FeedFilter collapsed: approved `no` and pending `no`) is approved `yes`, and approved cards have a non-zero height; or `[data-instagram-caught-up]` | Document complete + 8 s |
 | profile | `main header img`, `main header h1` or `main header h2`, and no loader | complete + 4 s |
 | post / comments / likes | `main article` or `main img, main video`, and no loader | complete + 4 s |
 | search | The search control (`input[placeholder*="Search" i]`, `input[aria-label*="Search" i]`, `input[type="search"]`, `[role="combobox"]`) visible with an unchanged rect for 24 frames, document complete | complete + 4 s |
@@ -72,7 +72,9 @@ that, not the sampling alone, is why earlier fixes for the login surface did not
 | Tray container | Ancestor ≤ 7 levels of an item, 40–190 px tall, ≥ 60 % wide, not containing `article`, post links or the wordmark. Pinned `position: fixed; top: 0` with everything else hidden. | inherited | As above. |
 | Signed-in confirm dialog | `[role="dialog"]` whose text matches "view … story … signed in"; clicks the button whose whole text is "View story", "View" or "Continue" (once per dialog) | inherited | The dialog shows inside the native story viewer; the user taps it. |
 | Viewer state | `location.pathname` starts with `/stories/` | inherited | — |
-| Wordmark | `svg[aria-label="Instagram"]`: `viewBox` plus `path`, `polygon`, `polyline`, `rect` children (≤ 12, converted to path data) | seen (logged-out landing: `viewBox="0 0 600 150"`, one `polygon` for the "I" + six `path`s) | Native header shows a text "Instagram" fallback. |
+| Wordmark | `svg[aria-label="Instagram"]`: `viewBox` plus `path`, `polygon`, `polyline`, `rect` children (≤ 12, converted to path data) | seen (logged-out landing: `viewBox="0 0 600 150"`, one `polygon` for the "I" + six `path`s) | Native header draws the bundled copy of that capture (`WordmarkShape.bundled`). Either is fitted by its ink bounds into 103×29 pt. |
+| Viewer close control | `svg[aria-label="Close"]`, then its closest `button`, `[role="button"]` or `a[href]`, clicked by `__instagramTray.closeViewer()` for the native downward and left-edge swipes | assumed | `history.back()`; if the viewer is still open 1 s later, native reloads the tray, which reports the viewer closed. |
+| Login landing | The tray document's route (navigation policy, commit, `route` and `navigate` messages) classifies as `login` (e.g. `/accounts/login/`, `/accounts/onetap/`) | assumed (review follow-up) | The tray hides itself (reports no items) and never navigates Home; the next feed reload retries it. |
 
 ## Avatar and username
 
@@ -138,3 +140,26 @@ is **seen**.
 | Sign-up overlay | `a[href^="/accounts/signup"]` whose whole text is "Sign up" / "Sign up for Instagram", outside dialogs: nearest `fixed`/`sticky`/`absolute` ancestor ≤ 8 levels whose text contains "Get the full experience" and that holds no images, inputs, header, `main`, `article` or tab strip → `data-native-hidden="signup-banner"` | seen (logged-out profile: an absolute gradient overlay over the grid) | The overlay shows over the grid (logged out only). |
 | Button colour | Primary (Follow) buttons use Instagram's own `--ig-primary-button` triplet: `rgb(var(--ig-primary-button, 74, 93, 249))` | seen (logged-out profile, dark: `74, 93, 249`) | The fallback is the same blue. |
 | Settings route | Profile menu → Settings and activity pushes `/accounts/edit/`. `/accounts/settings/` and `/accounts/privacy_and_security/` 302 to login when signed out (real, gated routes) while unknown `/accounts/x/` paths return 200; their signed-in content is unverified. | probed (curl, logged out) | Edit profile page only. |
+
+## Home feed skin (`NativeSkin.css`, `/* === Home === */`)
+
+Every post-card rule is scoped to `html[data-following-mode="feed"] [data-following-approved="yes"]`
+(attributes FeedFilter sets on the document and on the cards it approved), so nothing outside
+approved Following-feed cards changes. No hashed class names; an element these selectors cannot
+reach keeps Instagram's own style. Colours follow `prefers-color-scheme` (dark: text
+`rgb(245,245,245)`, secondary `rgb(168,168,168)`; light: `#000`, `rgb(115,115,115)`).
+Checked in the simulator against `Tests/fixtures/home-feed.html`, an approximation of m-web
+markup built from these assumptions, not a capture of Instagram's signed-in DOM.
+
+| What | Selector (inside an approved card) | Found | Fallback when it fails |
+| --- | --- | --- | --- |
+| Card frame | the card itself: no border, no radius, no side margins; 14/18 px text | inherited (FeedFilter's cards) | Instagram's own card frame. |
+| Avatar | `header img[alt$="profile picture" i]` → 32×32, round | assumed (Instagram's alt text is "<user>'s profile picture") | Instagram's avatar size. Headerless (modern `div`) markup is not matched; story-ring canvases are left alone. |
+| Username | `header a[href]` without an `img`, not a post (`/p/`), location (`/explore/`) or audio (`/audio/`) link, and its spans → 14 px semibold, primary | assumed | Instagram's weight. |
+| Timestamps | `time` → 12 px secondary, no uppercase; `header time` → 14 px secondary | assumed | Instagram's timestamp style. |
+| Action glyphs | `svg[aria-label]` = `Like`, `Unlike`, `Comment`, `Share Post`, `Share`, `Save`, `Remove` → 24×24 | assumed | Instagram's glyph size; spacing is always Instagram's own button padding. |
+| Like count | `a[href$="/liked_by/"]` and its spans → 14 px semibold, primary | assumed (FeedFilter already accepts `/liked_by/` post links) | Instagram's style. "Liked by X and others" rows get the same weight for the linked part only. |
+| Comments link | `a[href$="/comments/"]` and its spans → 14 px secondary | assumed | Instagram's style. |
+| Inline comment field | `form:has(textarea)` → hidden (native has no inline composer in the feed; Comment opens the comments page) | assumed | The field shows. |
+| Not styled | Caption username (no attribute tells it from @mentions), carousel dots (no stable attribute), "•" separator text | — | Instagram's own style. |
+| Caught-up card | `[data-instagram-caught-up]` and its `[data-part]` children, injected by FeedFilter | n/a (our markup) | — |

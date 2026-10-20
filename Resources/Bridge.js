@@ -175,7 +175,7 @@ function probe(kind){
  const mainMedia=!!main&&!!main.querySelector('img,video');
  return {complete,elapsed:now()-started,loading,mainMedia,
   loginForm:!!document.querySelector('input[type="password"],input[name="username"]')||loggedOutLanding(),
-  approvedPosts:kind==='home'?document.querySelectorAll('[data-following-approved="yes"]').length:0,
+  approvedPosts:kind==='home'?homeFeedShown():0,
   caughtUp:!!document.querySelector('[data-instagram-caught-up]'),
   articles:main?main.querySelectorAll('article').length:0,
   profileHeader:!!document.querySelector('main header img,main header h1,main header h2'),
@@ -324,6 +324,28 @@ function scanTray(){
   const viewBox=wordmark.getAttribute('viewBox')||'';const key=viewBox+paths.length+(paths[0]?paths[0].d.length:0);
   if(paths.length&&viewBox&&key!==lastWordmark){lastWordmark=key;post('wordmark',{viewBox,paths});}}
 }
+
+// --- Home ---
+/** Home readiness: the number of approved posts that are laid out, or 0 while the first post
+    card in the feed (the top of Home) is still unresolved, since FeedFilter keeps unresolved
+    cards' space but hides them and revealing then would show a blank feed top. Cards FeedFilter
+    collapsed (not approved, not pending) are skipped. */
+function homeFeedShown(){
+ const cards=[...document.querySelectorAll('[data-following-approved]')].filter(c=>!(c.getAttribute('data-following-approved')==='no'&&c.getAttribute('data-following-pending')==='no'));
+ if(!cards.length||cards[0].getAttribute('data-following-approved')!=='yes')return 0;
+ return cards.filter(c=>{if(c.getAttribute('data-following-approved')!=='yes')return false;const r=c.getBoundingClientRect?c.getBoundingClientRect():null;return !!r&&r.height>0;}).length;
+}
+/** Closes Instagram's story viewer in the tray web view with its own Close control, else
+    history.back(). Native calls it for the downward and edge swipes. Returns what it did. */
+function closeStoryViewer(){
+ if(!location.pathname.startsWith('/stories/'))return 'closed';
+ const icon=document.querySelector('svg[aria-label="Close"]');
+ const control=icon&&icon.closest?icon.closest('button,[role="button"],a[href]'):null;
+ if(control&&typeof control.click==='function'){control.click();return 'clicked';}
+ history.back();return 'back';
+}
+if(role==='tray')window.__instagramTray=Object.freeze({closeViewer:closeStoryViewer});
+// --- end Home ---
 
 // --- Tabs ---
 // Search, Notifications and Profile (Phase 2C). Marks Instagram's DOM with data-native-* attributes that

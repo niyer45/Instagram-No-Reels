@@ -1,14 +1,19 @@
 import UIKit
 
-/// Draws Instagram's captured wordmark vector, or a text fallback until it is known.
+/// Draws Instagram's wordmark vector (the captured one, else the bundled copy), aspect-fitted to
+/// the ink of its paths, left aligned and vertically centred in the view, in the label colour.
 final class WordmarkView: UIView {
-    private let fallback = UILabel()
+    /// Native wordmark box on iPhone (the header pins the view to this size).
+    static let size = CGSize(width: 103, height: 29)
 
+    private var parsed: [(path: CGPath, evenOdd: Bool)] = []
+    private var ink = CGRect.null
+
+    /// The wordmark to draw; nil or an unusable shape falls back to `WordmarkShape.bundled`.
     var shape: WordmarkShape? {
         didSet {
-            fallback.isHidden = shape?.bounds != nil
-            invalidateIntrinsicContentSize()
-            setNeedsDisplay()
+            guard shape != oldValue else { return }
+            prepare()
         }
     }
 
@@ -19,35 +24,33 @@ final class WordmarkView: UIView {
         isAccessibilityElement = true
         accessibilityLabel = "Instagram"
         accessibilityTraits = .header
-        fallback.text = "Instagram"
-        fallback.font = UIFont(name: "SnellRoundhand-Bold", size: 30) ?? .systemFont(ofSize: 24, weight: .bold)
-        fallback.textColor = .label
-        fallback.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(fallback)
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: WordmarkView, _: UITraitCollection) in view.setNeedsDisplay() }
-        NSLayoutConstraint.activate([
-            fallback.leadingAnchor.constraint(equalTo: leadingAnchor),
-            fallback.centerYAnchor.constraint(equalTo: centerYAnchor),
-        ])
+        prepare()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    override var intrinsicContentSize: CGSize {
-        guard let box = shape?.bounds else { return CGSize(width: fallback.intrinsicContentSize.width, height: 29) }
-        return CGSize(width: 29 * box.width / box.height, height: 29)
+    override var intrinsicContentSize: CGSize { Self.size }
+
+    /// Parses the paths once per shape so drawing (on every theme change) does no parsing.
+    private func prepare() {
+        let candidate = shape.flatMap { $0.isValid ? $0 : nil } ?? .bundled
+        parsed = candidate.paths.compactMap { part in SVGPath.parse(part.d).map { ($0, part.evenOdd) } }
+        ink = parsed.reduce(CGRect.null) { $0.union($1.path.boundingBoxOfPath) }
+        setNeedsDisplay()
     }
 
     override func draw(_ rect: CGRect) {
-        guard let shape, let box = shape.bounds, let context = UIGraphicsGetCurrentContext() else { return }
-        let scale = bounds.height / box.height
+        guard !ink.isNull, ink.width > 0, ink.height > 0, let context = UIGraphicsGetCurrentContext() else { return }
+        let scale = min(bounds.width / ink.width, bounds.height / ink.height)
+        let y = (bounds.height - ink.height * scale) / 2
+        context.translateBy(x: 0, y: y)
         context.scaleBy(x: scale, y: scale)
-        context.translateBy(x: -box.minX, y: -box.minY)
+        context.translateBy(x: -ink.minX, y: -ink.minY)
         context.setFillColor(UIColor.label.resolvedColor(with: traitCollection).cgColor)
-        for part in shape.paths {
-            guard let path = SVGPath.parse(part.d) else { continue }
-            context.addPath(path)
+        for part in parsed {
+            context.addPath(part.path)
             context.fillPath(using: part.evenOdd ? .evenOdd : .winding)
         }
     }

@@ -44,36 +44,130 @@ html[data-native-chrome="hidden"] body {
 /* Stories tray spacer on the Following feed: the native tray sits over it. */
 [data-instagram-stories-slot] { display: block; width: 100%; pointer-events: none; }
 
-/* "You're all caught up" card, styled like the native app. */
+/* === Home === */
+/* Native Home feed parity. Dark is the design target; light values follow
+   prefers-color-scheme, which the web view takes from the window style that Theme derives
+   from the page colour. Post-card rules apply only to cards FeedFilter approved on the feed
+   (html[data-following-mode="feed"] [data-following-approved="yes"]) and use ARIA labels,
+   link targets and element names only; anything not reachable that way stays unstyled.
+   Selectors and fallbacks: docs/DOM-NOTES.md, "Home feed skin". */
+:root {
+  --native-text: rgb(245, 245, 245);
+  --native-secondary-text: rgb(168, 168, 168);
+  --native-link-button: rgb(0, 149, 246);
+  --native-separator: rgba(255, 255, 255, 0.1);
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --native-text: rgb(0, 0, 0);
+    --native-secondary-text: rgb(115, 115, 115);
+    --native-separator: rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* Cards: edge to edge, no web card border, 14/18 body text. */
+html[data-following-mode="feed"] [data-following-approved="yes"] {
+  border: 0 !important;
+  border-radius: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  font-size: 14px;
+  line-height: 18px;
+}
+
+/* Header row: 32 pt avatar (alt text "<user>'s profile picture"), 14 pt semibold username,
+   secondary "• time". Location, audio and post links in the header keep Instagram's style. */
+html[data-following-mode="feed"] [data-following-approved="yes"] header img[alt$="profile picture" i] {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 50% !important;
+  object-fit: cover;
+}
+html[data-following-mode="feed"] [data-following-approved="yes"] header a[href]:not(:has(img)):not([href*="/p/"]):not([href*="/explore/"]):not([href*="/audio/"]),
+html[data-following-mode="feed"] [data-following-approved="yes"] header a[href]:not(:has(img)):not([href*="/p/"]):not([href*="/explore/"]):not([href*="/audio/"]) span {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: var(--native-text) !important;
+}
+
+/* Timestamps: 12 pt secondary under the post; 14 pt secondary after the username. */
+html[data-following-mode="feed"] [data-following-approved="yes"] time {
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  line-height: 16px;
+  color: var(--native-secondary-text) !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
+html[data-following-mode="feed"] [data-following-approved="yes"] header time {
+  font-size: 14px !important;
+  line-height: 18px;
+}
+
+/* Action row: 24 pt glyphs (heart, comment, share; bookmark right). Instagram's own buttons
+   keep their 8 pt padding, which gives native's 12 pt inset and 16 pt gaps. */
+html[data-following-mode="feed"] [data-following-approved="yes"] :is(svg[aria-label="Like"], svg[aria-label="Unlike"], svg[aria-label="Comment"], svg[aria-label="Share Post"], svg[aria-label="Share"], svg[aria-label="Save"], svg[aria-label="Remove"]) {
+  width: 24px !important;
+  height: 24px !important;
+}
+
+/* Like count (link to the likers list): 14 pt semibold. */
+html[data-following-mode="feed"] [data-following-approved="yes"] a[href$="/liked_by/"],
+html[data-following-mode="feed"] [data-following-approved="yes"] a[href$="/liked_by/"] span {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: var(--native-text) !important;
+}
+
+/* "View all N comments" (link to the comments page): 14 pt secondary. */
+html[data-following-mode="feed"] [data-following-approved="yes"] a[href$="/comments/"],
+html[data-following-mode="feed"] [data-following-approved="yes"] a[href$="/comments/"] span {
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  color: var(--native-secondary-text) !important;
+}
+
+/* Web-only chrome inside cards: the inline "Add a comment…" field (native opens comments). */
+html[data-following-mode="feed"] [data-following-approved="yes"] form:has(textarea) {
+  display: none !important;
+}
+
+/* "You're all caught up" card injected by FeedFilter: gradient ring with a check mark,
+   20 pt semibold title, 14 pt secondary detail, blue link-style "View older posts". */
 [data-instagram-caught-up] {
   text-align: center;
-  padding: 36px 24px 28px;
-  color: inherit;
-  border-top: 0.5px solid rgba(128, 128, 128, 0.25);
-  border-bottom: 0.5px solid rgba(128, 128, 128, 0.25);
+  padding: 40px 24px 32px;
+  color: var(--native-text);
+  border-top: 0.5px solid var(--native-separator);
+  border-bottom: 0.5px solid var(--native-separator);
   margin: 8px 0;
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }
 [data-instagram-caught-up] [data-part="icon"] {
-  width: 78px;
-  height: 78px;
-  margin: 0 auto 20px;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 78 78'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='1' x2='1' y2='0'%3E%3Cstop stop-color='%23feda75'/%3E%3Cstop offset='.3' stop-color='%23fa7e1e'/%3E%3Cstop offset='.65' stop-color='%23d62976'/%3E%3Cstop offset='1' stop-color='%23962fbf'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='39' cy='39' r='37.25' fill='none' stroke='url(%23g)' stroke-width='2.5'/%3E%3Cpath d='M26 40.5l9.5 9.5 17-20' fill='none' stroke='url(%23g)' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  width: 96px;
+  height: 96px;
+  margin: 0 auto 16px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='1' x2='1' y2='0'%3E%3Cstop stop-color='%23feda75'/%3E%3Cstop offset='.3' stop-color='%23fa7e1e'/%3E%3Cstop offset='.65' stop-color='%23d62976'/%3E%3Cstop offset='1' stop-color='%23962fbf'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='48' cy='48' r='46' fill='none' stroke='url(%23g)' stroke-width='3'/%3E%3Cpath d='M31 49.5l11.5 11.5 22-25' fill='none' stroke='url(%23g)' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 [data-instagram-caught-up] [data-part="title"] {
-  font: 600 20px/1.25 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  margin: 0 0 8px;
+  font: 600 20px/25px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  color: var(--native-text);
+  margin: 0 0 6px;
 }
 [data-instagram-caught-up] [data-part="detail"] {
-  font: 400 14px/1.35 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  color: rgb(168, 168, 168);
-  margin: 0 0 12px;
+  font: 400 14px/18px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  color: var(--native-secondary-text);
+  margin: 0 0 14px;
 }
 [data-instagram-caught-up] [data-part="older"] {
+  -webkit-appearance: none;
+  appearance: none;
   border: 0;
   background: none;
-  color: rgb(0, 149, 246);
-  font: 600 14px/1.3 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  color: var(--native-link-button);
+  font: 600 14px/18px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   padding: 8px 12px;
+  cursor: pointer;
 }
 
 /* === Search === */

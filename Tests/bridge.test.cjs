@@ -227,3 +227,48 @@ test('a settings page with password fields is ready as settings, not as login co
  const reset=page({path:'/accounts/password/reset/'});reset.document.querySelector=s=>s.includes('input[type="password"]')?{}:null;
  reset.flush(7);assert.deepEqual(reset.of('ready'),[{type:'ready',kind:'login'}]);
 });
+
+// --- Home ---
+function card(approved,pending,height){return {attrs:{'data-following-approved':approved,'data-following-pending':pending},height,
+ getAttribute(k){return this.attrs[k]??null;},getBoundingClientRect(){return {top:0,height:this.height,width:400};}};}
+test('Home reveals once the first post card at the top of the feed is approved and laid out',()=>{
+ const p=page({path:'/',boot:{headerHeight:44,hideChrome:true,storiesSlot:true}});
+ const collapsed=card('no','no',1),pending=card('no','yes',600),later=card('yes','no',600);
+ p.document.querySelectorAll=s=>s==='[data-following-approved]'?[collapsed,pending,later]:[];
+ // A later approved post is not enough while the top card is still unresolved (hidden but taking space).
+ p.flush(12);assert.equal(p.of('ready').length,0);
+ // Approved cards that have not been laid out yet do not count either.
+ pending.attrs['data-following-approved']='yes';pending.attrs['data-following-pending']='no';pending.height=0;later.height=0;
+ p.flush(12);assert.equal(p.of('ready').length,0);
+ pending.height=600;p.flush(5);assert.equal(p.of('ready').length,0);p.flush(1);
+ assert.deepEqual(p.of('ready'),[{type:'ready',kind:'home'}]);
+});
+test('Home still reveals for the caught-up card when no post is approved',()=>{
+ const p=page({path:'/'});p.document.querySelector=s=>s==='[data-instagram-caught-up]'?{}:null;
+ p.flush(6);assert.deepEqual(p.of('ready'),[{type:'ready',kind:'home'}]);
+});
+test('the tray closes Instagram\'s story viewer with its own Close control, else goes back',()=>{
+ const p=page({path:'/stories/alice/123/',role:'tray'});let clicks=0,backs=0,icon=null;
+ const control={click(){clicks++;}};
+ p.document.querySelector=s=>s==='svg[aria-label="Close"]'?icon:null;p.history.back=()=>{backs++;};
+ icon={closest:s=>s==='button,[role="button"],a[href]'?control:null};
+ assert.equal(p.window.__instagramTray.closeViewer(),'clicked');assert.equal(clicks,1);assert.equal(backs,0);
+ icon=null;assert.equal(p.window.__instagramTray.closeViewer(),'back');assert.equal(backs,1);
+ p.location.pathname='/';assert.equal(p.window.__instagramTray.closeViewer(),'closed');assert.equal(clicks+backs,2);
+ assert.equal(page({path:'/'}).window.__instagramTray,undefined);
+});
+test('the Home skin block scopes post-card rules to approved feed cards and uses no class selectors',()=>{
+ const css=fs.readFileSync(path.join(__dirname,'../Resources/NativeSkin.css'),'utf8');
+ const start=css.indexOf('/* === Home === */');assert.ok(start>0);
+ // The block runs to the next "/* === Section === */" marker (Search, Notifications, Profile follow it).
+ const next=css.indexOf('/* === ',start+1);
+ const home=css.slice(start,next<0?css.length:next).replace(/\/\*[\s\S]*?\*\//g,'').replace(/url\("[^"]*"\)/g,'url()');
+ const selectors=[...home.matchAll(/([^{}]+)\{/g)].map(m=>m[1].trim()).filter(s=>!s.startsWith('@'));
+ assert.ok(selectors.length>10);
+ for(const selector of selectors){
+  for(const part of selector.split(/,(?![^(]*\))/).map(s=>s.trim())){
+   assert.doesNotMatch(part.replace(/"[^"]*"/g,'""'),/\.[A-Za-z_-]/,'class selector: '+part);
+   if(/\b(header|time|svg|form|a)\b/.test(part)&&!part.startsWith('[data-instagram-caught-up]'))assert.ok(part.startsWith('html[data-following-mode="feed"] [data-following-approved="yes"]'),'unscoped: '+part);
+  }
+ }
+});

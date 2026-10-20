@@ -184,3 +184,21 @@ Simulator-verified (logged out): tab bar avatar (24 pt, ring when selected), cac
 
 ### Content filters sheet
 - [ ] Opens from the Profile menu and from Instagram's settings menu entry; dark inset groups with outline icons; Reload Home, Import following.json, Remove imported list, Sign in and Sign out (with confirmation) all still work.
+
+## Phase 2A — Home
+
+Simulator-checked against `Tests/fixtures/home-feed.html` (header, wordmark, collapse, spinner position, card skin, caught-up card, light theme); everything below needs the signed-in feed.
+
+- [ ] Header: a short scroll (under ~8 pt) does nothing; scrolling further down slides the header away with the content; scrolling up brings it back with the content; releasing mid-way snaps it fully shown or fully hidden (a flick follows the flick's direction). At the top of the feed it is always fully shown. No stutter while scrolling.
+- [ ] Re-tapping Home while scrolled down brings the header back at once as the feed scrolls to the top.
+- [ ] Wordmark: the header shows Instagram's wordmark on the very first launch (bundled copy), about 103 pt wide, 16 pt from the left edge; it does not change size when the captured one replaces it. Heart and Messenger sit 16 pt from the right edge, 20 pt apart.
+- [ ] Stories tray: a vertical drag that starts on the tray scrolls the feed; a horizontal drag scrolls the tray only. Grey rings show while it loads.
+- [ ] Opening a story: full screen, no status bar, no home indicator. Instagram's close (X) returns to Home with the tray in place; so does a downward swipe (the viewer follows the finger; a short drag springs back) and a left-edge swipe. Tapping through and swiping sideways between people still work.
+- [ ] If the tray ever lands on a login or "Save your login info?" (`/accounts/onetap/`) page, the tray disappears and Home stays on the feed (it must never be replaced by the login page because of the tray).
+- [ ] Pull to refresh: the header stays put and the native spinner appears in the gap below it, above the tray. After release the pulled distance holds until the new feed is ready, then posts settle up; the tray keeps showing the previous stories (no grey rings flash) until the new tray is measured.
+- [ ] Post cards: edge to edge with no card border; 32 pt round avatar; bold 14 pt username followed by grey "• 2h"; 24 pt heart, comment and share on the left, bookmark on the right; bold like count; grey "View all N comments"; small grey timestamp ("2 hours ago"). Note any element that still looks like the website (and which one) — selectors are in DOM-NOTES "Home feed skin".
+- [ ] No "Add a comment…" field under feed posts; the comment glyph still opens comments.
+- [ ] Caught-up card: gradient ring with a check, "You're all caught up", grey "You've seen all new posts from the past 2 days.", blue "View older posts" that loads older posts.
+- [ ] Light appearance (if Instagram renders light for you): header, wordmark, heart, Messenger, tray rings and card text follow light colours; nothing stays dark.
+- [ ] Launch: the splash fades straight into the feed (or the login page), without showing the grey skeleton in between and without a blank frame.
+- [ ] Home's skeleton gives way as soon as the first post at the top is shown, rather than after the whole feed loads; the top of the feed is never blank after the skeleton goes.

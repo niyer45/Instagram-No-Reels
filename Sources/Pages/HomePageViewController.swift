@@ -10,15 +10,20 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
     private lazy var tray = StoriesTrayHost(environment: environment, delegate: self)
     private var trayHeight = StoriesTrayHost.defaultHeight
     private var slotTop: CGFloat?
-    private var collapse: CGFloat = 0
-    private var lastOffset: CGFloat = 0
-    private var heldPull: CGFloat?
     private var offsetObservation: NSKeyValueObservation?
     private weak var viewer: StoryViewerController?
     private var trayWait: Timer?
     private var launchReported = false
     /// Fires once when the feed and its tray (or the login page) are ready to be revealed.
     var onLaunchReady: (() -> Void)?
+
+    // Header collapse state (§3.3): `collapse` is how far the header has slid up, 0...height.
+    private var collapse: CGFloat = 0
+    private var lastOffset: CGFloat = 0
+    /// Scroll travelled in the current direction; hiding or revealing from rest starts past `collapseThreshold`.
+    private var travel: CGFloat = 0
+    private var heldPull: CGFloat?
+    private static let collapseThreshold: CGFloat = 8
 
     init(environment: AppEnvironment, url: URL?) {
         super.init(environment: environment, url: url, placement: .tabRoot(.home))
@@ -40,8 +45,12 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
         offsetObservation = webView.scrollView.observe(\.contentOffset, options: [.new]) { [weak self] scrollView, _ in
             MainActor.assumeIsolated { self?.scrolled(scrollView) }
         }
+        webView.scrollView.panGestureRecognizer.addTarget(self, action: #selector(homePanChanged(_:)))
         onReady = { [weak self] in self?.feedReady() }
         applyHomeTheme()
+        #if DEBUG
+        HomeDemo.start(on: self)
+        #endif
     }
 
     /// Tab re-tap and Content filters reload refresh the tray with the feed.
@@ -70,6 +79,7 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
         homeHeader.isHidden = isLoginContent
         view.bringSubviewToFront(homeHeader)
         view.bringSubviewToFront(statusBarBackdrop)
+        placeRefreshSpinner()
         layoutTray()
     }
 
@@ -81,11 +91,23 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
         tray.viewportHeight = webView.bounds.height
     }
 
+    /// The header stays put while pulling, so the spinner belongs in the gap that opens below it.
+    /// The refresh control centres its spinner in the pulled distance from the web view's top,
+    /// which the header covers; shifting its bounds by the header height moves the spinner into
+    /// the gap above the page's (empty) header reservation, as on native Instagram.
+    private func placeRefreshSpinner() {
+        guard let refresh = webView.scrollView.refreshControl else { return }
+        let shift = -headerHeight
+        if refresh.bounds.origin.y != shift { refresh.bounds.origin.y = shift }
+    }
+
     override func applyTheme() {
         super.applyTheme()
         applyHomeTheme()
     }
 
+    /// Light pages: the header, glyphs and wordmark follow the window's interface style, which
+    /// Theme derives from the page colour; only the surface colour is set here.
     private func applyHomeTheme() {
         homeHeader.backgroundColor = environment.theme.background
         tray.applyTheme(environment.theme.background)
@@ -98,43 +120,80 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
 
     // MARK: Header collapse
 
+    /// Called for every content offset change (KVO); sets only the header's transform and alpha.
     private func scrolled(_ scrollView: UIScrollView) {
         let y = scrollView.contentOffset.y
-        defer { lastOffset = y }
-        if let held = heldPull {
-            homeHeader.transform = CGAffineTransform(translationX: 0, y: held)
+        let dy = y - lastOffset
+        lastOffset = y
+        placeRefreshSpinner()
+        if heldPull != nil || y <= 0 {
+            // At the top (and while a refresh holds the pull) the header is fully shown and fixed;
+            // the refresh spinner shows in the gap below it.
+            travel = 0
+            setCollapse(0)
             return
         }
-        if y <= 0 {
-            // At the top the header follows the pull, so the refresh spinner shows above it.
-            collapse = 0
-            homeHeader.transform = CGAffineTransform(translationX: 0, y: -y)
-            homeHeader.setCollapse(0)
-            return
-        }
+        if dy == 0 { return }
+        if (dy > 0) != (travel > 0) { travel = 0 }
+        travel += dy
         let height = HomeHeaderView.height
-        collapse = min(max(collapse + (y - lastOffset), 0), height)
-        homeHeader.transform = CGAffineTransform(translationX: 0, y: -collapse)
-        homeHeader.setCollapse(collapse / height)
+        let atRest = collapse == 0 || collapse == height
+        if !atRest || abs(travel) >= Self.collapseThreshold {
+            collapse = min(max(collapse + dy, 0), height)
+        }
+        // Near the top the header can only be pushed up as far as the content has moved.
+        setCollapse(min(collapse, y))
+    }
+
+    private func setCollapse(_ value: CGFloat) {
+        collapse = value
+        homeHeader.transform = CGAffineTransform(translationX: 0, y: -value)
+        homeHeader.setCollapse(value / HomeHeaderView.height)
+    }
+
+    /// At drag end the header snaps fully shown or fully hidden (by fling direction, else by
+    /// how far it is collapsed). It cannot hide while the content is less than its height from the top.
+    @objc private func homePanChanged(_ pan: UIPanGestureRecognizer) {
+        guard pan.state == .ended || pan.state == .cancelled, heldPull == nil else { return }
+        let height = HomeHeaderView.height
+        let y = webView.scrollView.contentOffset.y
+        guard collapse > 0, collapse < height else { return }
+        let velocity = pan.velocity(in: webView.scrollView).y
+        var hide = abs(velocity) > 300 ? velocity < 0 : collapse > height / 2
+        if y < height { hide = false }
+        snapHeader(hidden: hide)
+    }
+
+    private func snapHeader(hidden: Bool) {
+        let target: CGFloat = hidden ? HomeHeaderView.height : 0
+        travel = 0
+        UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut, .beginFromCurrentState, .allowUserInteraction]) {
+            self.setCollapse(target)
+        }
+    }
+
+    /// Re-tapping Home scrolls to top; the header comes back at once, as on native.
+    override func scrollToTop() -> Bool {
+        let scrolled = super.scrollToTop()
+        if scrolled { snapHeader(hidden: false) }
+        return scrolled
     }
 
     // MARK: Refresh hold
 
     override func refreshWillBegin(hold: CGFloat) {
         heldPull = hold
-        homeHeader.transform = CGAffineTransform(translationX: 0, y: hold)
+        setCollapse(0)
         tray.load()
     }
 
     override func refreshSettle() {
-        homeHeader.transform = .identity
-        homeHeader.setCollapse(0)
-        collapse = 0
+        setCollapse(0)
     }
 
     override func refreshDidFinish() {
         heldPull = nil
-        homeHeader.transform = .identity
+        travel = 0
     }
 
     // MARK: Bridge
@@ -167,11 +226,13 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
         }
     }
 
+    /// Ends the launch splash once the skeleton's 0.2 s cross-fade (`markReady`) is over, so the
+    /// splash fades straight into the feed or login page instead of through the skeleton.
     private func reportLaunchReady() {
         trayWait?.invalidate()
         guard !launchReported else { return }
         launchReported = true
-        onLaunchReady?()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in self?.onLaunchReady?() }
     }
 
     // MARK: StoriesTrayHostDelegate
@@ -191,8 +252,14 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
         if open {
             guard viewer == nil else { return }
             let controller = StoryViewerController(webView: tray.webView)
-            controller.onCloseRequest = { [weak self] in
-                self?.tray.webView.evaluateJavaScript("history.back()", completionHandler: nil)
+            controller.onCloseRequest = { [weak self, weak controller] in
+                guard let self else { return }
+                self.tray.webView.evaluateJavaScript("window.__instagramTray&&window.__instagramTray.closeViewer()", completionHandler: nil)
+                // If Instagram's viewer did not close (no close control, no history), reset the tray.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self, weak controller] in
+                    guard let self, let controller, self.viewer === controller else { return }
+                    self.tray.load()
+                }
             }
             viewer = controller
             present(controller, animated: true)
