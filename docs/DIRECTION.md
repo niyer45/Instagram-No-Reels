@@ -53,27 +53,36 @@ overlays) hosted in `UIHostingController` / `UIHostingConfiguration`.
 
 ```
 Sources/
-  App/            AppDelegate/SceneDelegate (UIKit lifecycle), AppEnvironment
-  Shell/          RootTabBarController, TabItem, InstagramTabBar (styling, avatar item)
-  Navigation/     Router (URL -> PageKind -> presentation), PageKind, link interception
-  Pages/          WebPageViewController (one per page), per-kind header views,
-                  HomeHeaderView, StoriesTrayHost, SkeletonView(s)
+  App/            AppDelegate/SceneDelegate (UIKit lifecycle), AppEnvironment, AccountStore
+  Shell/          RootTabBarController, TabItem, InstagramTabBar (styling, avatar item),
+                  SplashView
+  Navigation/     Router (URL -> Route -> presentation), RouteClassifier, RouteDecision,
+                  PageNavigationController
+  Pages/          WebPageViewController (one per page), HomePageViewController,
+                  PageHeaderView, HomeHeaderView, Wordmark*, StoriesTrayHost,
+                  StoryViewerController, SkeletonView, LoadFailureView, SearchIdleView
   Web/            WebPageFactory (WKWebView construction, shared config), WebBridge
-                  (typed messages), UserScripts (loads Resources/*.js|css)
-  Filter/         FollowingPolicy.swift (unchanged), filter status model
-  Support/        Haptics, Theme (colors, hairline), Diagnostics (DEBUG only)
+                  + BridgeMessage (typed messages), UserScripts (loads Resources/*.js|css)
+  Filter/         FollowingPolicy.swift (unchanged), FollowingStore, FilterStatus(+Payload),
+                  ContentFilterSettingsView
+  Support/        Haptics, Theme (colors, hairline), Glyphs + SVGPath, Diagnostics,
+                  DebugLaunchOptions (DEBUG only)
 Resources/
   FeedFilter.js   post filtering (observe-only), status messages
-  Bridge.js       route/scroll/ready/avatar/story-viewer messages to native
+  Bridge.js       route/navigate/ready/theme/avatar/story-viewer/tray messages to native
   NativeSkin.css  hides web chrome, native parity styling of web content
 Tests/            node tests (.cjs) for JS; Swift checks compiled with swiftc
 ```
 
 ### 3.1 Tabs
 
-`RootTabBarController: UITabBarController`. Each tab is a `UINavigationController`
-(system navigation bar hidden; pages draw their own native headers) whose root is a
-`WebPageViewController` for the tab's route.
+`RootTabBarController` is a custom container view controller (not `UITabBarController`)
+that draws `InstagramTabBar` itself. Rationale (Phase 1): since iOS 26 the system tab bar
+is a floating Liquid Glass bar that cannot be made opaque with a hairline, and hiding it
+changes child safe areas differently across iOS 17–27. Each tab is a
+`PageNavigationController` (system navigation bar hidden; pages draw their own native
+headers) whose root is a `WebPageViewController` for the tab's route. Every tab's stack is
+retained for the session; only the selected one is in the view hierarchy.
 
 Default tabs, in Instagram's native order with the Reels slot removed:
 
@@ -81,12 +90,25 @@ Default tabs, in Instagram's native order with the Reels slot removed:
 | --- | --- | --- |
 | Home | `/?variant=following` | Native header + stories tray; filtered feed |
 | Search | `/explore/` | Account search only; idle "caught up" state rendered natively |
-| Create | web "new post" flow | Investigate m-web's create entry point. If no reliable entry exists, replace with Notifications (`/accounts/activity/`). Record the finding here. |
+| Notifications | `/accounts/activity/` | Replaces Create (decision below) |
 | Profile | `/<own username>/` | Avatar glyph; tapping the selected tab scrolls to top, second tap reloads |
 
-Notifications and Messages live in the Home header (native parity) and push onto the Home
-stack. Tapping the selected tab scrolls that tab's page to top (native behaviour); tapping
-again at top pops to root / reloads where documented.
+**Create tab decision (Phase 1): replaced by Notifications.** m-web has no URL entry
+point for creating a post. Its "New post" control is a button in the web bottom nav that
+opens a native file picker from JavaScript; the follow-up steps (`/create/style/`,
+`/create/details/`) only work with that in-memory selection. Logged-out probes (Oct 2026):
+`/create/select/` resolves to the profile of a user named "create", and `/create/style/`
+302-redirects to login. Because the web nav is hidden and no route opens the flow, a
+native Create tab could only work by script-clicking a hidden control, which is not
+reliable. The Router still classifies `/create/...` as `create` and presents it full screen
+if Instagram's own content ever navigates there. Revisit if m-web gains a create route.
+
+Notifications and Messages also live in the Home header (native parity) and push onto the
+Home stack. Tapping the selected tab: (1) if its page is scrolled down, scroll to top;
+(2) otherwise, if pages are pushed, pop to root; (3) otherwise Home, Notifications and
+Profile reload with the skeleton (Home also reloads the Stories tray); Search does nothing
+more. The Profile tab waits on a skeleton until the bridge reports the signed-in username
+(cached between launches) and shows the login page when the session is signed out.
 
 ### 3.2 Pages
 
@@ -97,6 +119,17 @@ where the kind supports refresh, and status handling from the bridge.
 `PageKind` (derive from URL path in `Router`; keep the table in one place):
 `home, search, profile(own), profile(other), post, comments, likes, inbox, thread,
 activity, stories, settings, login, create, other`.
+
+Implementation: `RouteKind` + identity in `Sources/Navigation/RouteClassifier.swift`
+mirrors `classify` in `Resources/Bridge.js`; both are checked against the single table in
+`Tests/route-fixtures.json` (node and Swift checks). Own vs other profile is decided by
+comparing the identity with the signed-in username. `blocked` (Reels routes, including
+`/<user>/reels/`) is an extra kind that the Router refuses. A page whose content is
+Instagram's login (password form or the logged-out landing) is treated as `login`: root
+pages hide their native header over it; pushed pages keep the back chevron.
+
+Headers: non-Home pages place the web view below the native header (no CSS reservation
+needed); only Home overlays its header on the web view, because it collapses with scroll.
 
 Link interception rule: a navigation inside a page that changes `PageKind`, or targets a
 different post/profile than the current page, is cancelled in the web view and performed
@@ -120,6 +153,19 @@ Back: interactive pop gesture and a native back chevron in the page header. Web
   the viewer full-screen (native modal) on top; closing returns to the tray.
 - Pull-to-refresh: native `UIRefreshControl`. Keep the current hold-until-ready behaviour
   (header, tray and posts settle together) but implement it inside the page controller.
+  Implemented in `WebPageViewController` for Home, Profile, Notifications and Messages: on
+  release, a snapshot of the content below the spinner stays up while the document
+  reloads; on `ready` the spinner ends and the snapshot (and the Home header) slide up by
+  the held distance together, then the snapshot fades. At the top, the Home header moves
+  down with the pull so the spinner shows above it.
+- Tray placement: `StoriesTrayHost` is a subview of the feed web view's `scrollView` at the
+  document position FeedFilter reports for the slot (`storiesSlot`), so it scrolls with
+  the posts without per-frame bridge messages. The tray web view keeps a full viewport and
+  the host clips it to the measured tray height. The slot's height follows the
+  `--native-stories-height` CSS variable set from native.
+- Wordmark: the Home header draws Instagram's own wordmark vector, captured from
+  `svg[aria-label="Instagram"]` by the tray web view and cached; a text fallback shows
+  until the first capture.
 - Caught-up card: style the injected card to match native (gradient ring check mark,
   "You're all caught up", secondary text) using CSS in `NativeSkin.css`.
 
@@ -132,20 +178,29 @@ drop malformed messages).
 
 | type | payload | when |
 | --- | --- | --- |
-| `route` | `{path, search}` | on load and on every pushState/replaceState/popstate |
+| `route` | `{path, search, title}` | on load and on every pushState/replaceState/popstate; `title` is the hidden web header's heading (or document title), used for thread/settings titles |
 | `navigate` | `{url}` | a link/history change that the Router must perform natively |
-| `ready` | `{kind}` | first meaningful content of this PageKind is painted (remove skeleton) |
-| `scroll` | `{y, dy}` | throttled to animation frames, for header collapse |
-| `status` | existing FeedFilter payload | filter counts and state (unchanged) |
-| `theme` | `{backgroundRGB}` | page background to match native surfaces |
-| `avatar` | `{url, username}` | own profile avatar for the Profile tab icon |
-| `storyViewer` | `{open}` | story viewer opened/closed |
+| `ready` | `{kind}` | first meaningful content of this PageKind is painted (remove skeleton); `kind` is `login` whenever the content is Instagram's login, whatever the route |
+| `status` | existing FeedFilter payload | filter counts and state (unchanged, minus `backgroundRGB`, which moved to `theme`) |
+| `theme` | `{backgroundRGB}` | page background to match native surfaces (only the visible page's is applied) |
+| `avatar` | `{url, username}` | own profile avatar for the Profile tab icon (CDN URLs only) |
+| `storyViewer` | `{open}` | story viewer opened/closed (stories web view only) |
 | `storiesTray` | `{height, items}` | tray measured (stories web view only) |
+| `storiesSlot` | `{top}` | document position of FeedFilter's stories spacer (Following feed) |
+| `searchIdle` | `{idle, top}` | Search is idle (no focus/query); native shows the caught-up state below `top` |
+| `wordmark` | `{viewBox, paths}` | Instagram wordmark vector captured for the native Home header (stories web view only) |
 | `openControls` | `{}` | user chose the filter settings entry |
 
-Native -> page uses `window.__instagram.policy(json)` and `window.__instagram.refresh()`;
-expose both from `Bridge.js`. Replace the ad-hoc `following-policy-change` event and the
-many `followingXxx` handler names with this protocol. Update tests accordingly.
+Removed (Phase 1): `scroll {y, dy}`. Native observes the web view's
+`scrollView.contentOffset` directly (§3.3), which is synchronous and frame-exact, so a
+bridge scroll stream would only add latency and message traffic.
+
+Native -> page uses `window.__instagram.policy(json)`, `window.__instagram.refresh()` and
+`window.__instagram.layout({headerHeight, storiesHeight, hideChrome})` (CSS variables and
+whether web chrome is hidden), all exposed from `Bridge.js`. Per-web-view values that must
+exist at document start (role `page`/`tray`, header height, stories slot, policy) are in
+`window.__instagramBoot`. The ad-hoc `following-policy-change` event and the
+`followingXxx` handler names are gone.
 
 ### 3.5 Web content skin (`NativeSkin.css`)
 
@@ -162,6 +217,9 @@ Injected at document start in every page web view. Responsibilities:
   structural selectors over Instagram's hashed class names, which change.
 - Reserve top space equal to the native header height via a CSS variable the native side
   sets (`--native-header-height`), rather than `contentInset`, so the web layout is stable.
+  Only Home needs it (§3.2 Headers); other pages set it to 0.
+- Web chrome is found structurally by `Bridge.js` and marked `data-native-hidden`; the CSS
+  hides marked nodes. Every selector and its fallback is in `docs/DOM-NOTES.md`.
 
 ### 3.6 Loading and readiness
 
@@ -188,14 +246,20 @@ up.
 
 ```sh
 node --test Tests/*.test.cjs
-swiftc -module-cache-path "$TMPDIR/ig-mc" Sources/Filter/FollowingPolicy.swift Tests/PolicyTests.swift -o "$TMPDIR/ig-policy" && "$TMPDIR/ig-policy"
+swiftc -module-cache-path "$TMPDIR/ig-mc" Sources/Filter/FollowingPolicy.swift Sources/Navigation/RouteClassifier.swift \
+  Sources/Navigation/RouteDecision.swift Sources/Support/SVGPath.swift Tests/*.swift -o "$TMPDIR/ig-policy" && "$TMPDIR/ig-policy"
 xcodebuild -project Following.xcodeproj -scheme Following -configuration Debug -sdk iphonesimulator \
   -destination 'generic/platform=iOS Simulator' -derivedDataPath "$TMPDIR/ig-build" CODE_SIGNING_ALLOWED=NO build
 ```
 
 Simulator smoke (a booted iPhone simulator is available via `xcrun simctl`): install the
 Debug build, launch, take a screenshot of the login page inside the native shell and of
-each tab's skeleton. Agents cannot sign in to Instagram; signed-in flows are validated by
+each tab's skeleton. DEBUG builds read `SHELL_TAB`, `SHELL_SKELETON_PREVIEW=1` and
+`SHELL_OPEN_URL` (pass as `SIMCTL_CHILD_…` to `xcrun simctl launch`) to start on a tab,
+hold every page on its skeleton, or open a URL through the Router
+(`Sources/Support/DebugLaunchOptions.swift`). The first launch after a fresh install
+spends several seconds starting WebKit before the first navigation; measure timing on a
+second launch. Agents cannot sign in to Instagram; signed-in flows are validated by
 the owner on device, so log what needs device validation in `docs/DEVICE-CHECKLIST.md`.
 
 ## 6. Phases
