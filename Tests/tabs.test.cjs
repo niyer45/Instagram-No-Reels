@@ -31,6 +31,7 @@ class El{
  appendChild(child){child.parentElement=this;this.children.push(child);return child;}
  insertBefore(child,ref){child.parentElement=this;const i=ref?this.children.indexOf(ref):-1;if(i<0)this.children.push(child);else this.children.splice(i,0,child);return child;}
  get nextSibling(){const siblings=this.parentElement?this.parentElement.children:[];return siblings[siblings.indexOf(this)+1]||null;}
+ get nextElementSibling(){return this.nextSibling;}
  get textContent(){return [this.text,...this.children.map(c=>c.textContent)].filter(Boolean).join(' ');}
  set textContent(v){this.text=String(v);}
  getAttribute(k){return this.attrs.has(k)?this.attrs.get(k):null;}
@@ -62,7 +63,7 @@ function page(pathname,build,{hideChrome=true}={}){
  window.top=window;
  const context={window,document,location,history:{pushState(){},replaceState(){}},URL,WeakSet,Event:class{constructor(type){this.type=type;}},
   setTimeout:f=>{f();return 0;},requestAnimationFrame:f=>frames.push(f),performance:{now:()=>0},
-  getComputedStyle:n=>({display:'block',visibility:'visible',opacity:'1',position:n.css.position||'static',backgroundColor:n.css.backgroundColor||'rgba(0, 0, 0, 0)',pointerEvents:'auto',paddingBottom:n.css.paddingBottom||'0px',height:n.css.height||'auto'}),
+  getComputedStyle:n=>({display:'block',visibility:'visible',opacity:'1',position:n.css.position||'static',backgroundColor:n.css.backgroundColor||'rgba(0, 0, 0, 0)',pointerEvents:'auto',paddingBottom:n.css.paddingBottom||'0px',paddingTop:n.css.paddingTop||'0px',height:n.css.height||'auto'}),
   MutationObserver:class{constructor(f){listeners.mutation=f;}observe(){}}};
  build(body,document);
  vm.runInNewContext(source,context);
@@ -244,4 +245,17 @@ test('the own-profile web top bar is hidden and its account switcher is reachabl
  const bar=p.body.children[0];assert.equal(bar.getAttribute('data-native-hidden'),'header');
  assert.equal(p.document.querySelector('header').closest('[data-native-hidden]'),null,'the profile header itself stays');
  assert.equal(p.tabs.switchAccount(),true);assert.equal(bar.querySelector('[role="button"]').clicked,1);
+});
+
+test('the strip reserved by the own-profile web top bar collapses in the same scan that hides the bar',()=>{
+ // Signed in, the own profile's top bar has no Instagram or Back glyph, so only the Tabs region finds it;
+ // its spacer must be marked in that same pass, not only after a later DOM change.
+ let bar,spacer;
+ page('/me/',body=>{
+  bar=h('div',{},[h('button',{},[h('svg',{'aria-label':'Options'})])],{rect:{top:0,width:390,height:44},css:{position:'fixed'}});
+  spacer=h('div',{},[h('main',{},[],{rect:{top:60,width:390,height:700}})],{rect:{top:0,width:390,height:760},css:{paddingTop:'60px'}});
+  body.appendChild(bar);body.appendChild(spacer);
+ });
+ assert.equal(bar.getAttribute('data-native-hidden'),'header');
+ assert.equal(spacer.getAttribute('data-native-header-spacer'),'');
 });

@@ -289,13 +289,13 @@ function scanChrome(){
    if(text&&text.length<=80&&text!==webTitle){webTitle=text;postRoute();}}
  }
  for(const banner of findBanners())if(!banner.hasAttribute('data-native-hidden'))banner.setAttribute('data-native-hidden','banner');
- markHeaderSpacers();
 }
 
 /** Instagram's top bar is position:fixed and the element right after it reserves the bar's height with padding-top
     (60 px seen on profiles), so hiding the bar alone leaves a blank strip. That sibling is marked and the skin zeroes
     its padding while the bar stays hidden, also once the page turns out to be logged-out content and web chrome is
-    shown again. Only 30–120 px paddings count, so ordinary content spacing is left alone. */
+    shown again. Only 30–120 px paddings count, so ordinary content spacing is left alone. Runs after scanTabs, which
+    hides the own-profile top bar, so that bar's spacer collapses in the same pass. */
 function markHeaderSpacers(){
  if(typeof getComputedStyle!=='function')return;
  for(const hidden of document.querySelectorAll('[data-native-hidden="header"]')){
@@ -602,7 +602,7 @@ let chromeQueued=false;
 function onMutation(){
  if(role==='tray'){scanTray();return;}
  queueFrame();
- if(!chromeQueued){chromeQueued=true;const run=()=>{chromeQueued=false;applyLayout();scanChrome();scanTabs();requestTheme();postRoute();};
+ if(!chromeQueued){chromeQueued=true;const run=()=>{chromeQueued=false;applyLayout();scanChrome();scanTabs();markHeaderSpacers();requestTheme();postRoute();};
   if(typeof requestAnimationFrame==='function')requestAnimationFrame(run);else setTimeout(run,16);}
 }
 new MutationObserver(onMutation).observe(document,{childList:true,subtree:true});
