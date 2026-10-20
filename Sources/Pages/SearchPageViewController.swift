@@ -18,6 +18,10 @@ final class SearchPageViewController: WebPageViewController {
         webView.scrollView.keyboardDismissMode = .onDrag
     }
 
+    /// Search configures its web view's scroll view once (keyboard dismissal above); a web view
+    /// recreated after unloading would lose that, so unloading only blanks the document.
+    override var releasesWebViewWhenUnloaded: Bool { false }
+
     override func layoutPage() {
         super.layoutPage()
         guard let idle = idleHost?.view else { return }
