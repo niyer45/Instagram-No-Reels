@@ -47,9 +47,11 @@ enum HomeDemo {
             scrollView.refreshControl?.beginRefreshing()
             scrollView.contentOffset.y = -110
         case "light":
+            page.environment.theme.setSystemStyle(.light)
             page.environment.theme.update(rgb: [255, 255, 255])
         case "dark":
             // Restores Instagram dark after "light" (the theme colour persists between launches).
+            page.environment.theme.setSystemStyle(.dark)
             page.environment.theme.update(rgb: [12, 16, 20])
         default:
             break

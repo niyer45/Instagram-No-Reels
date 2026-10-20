@@ -25,6 +25,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         let environment = (UIApplication.shared.delegate as? AppDelegate)?.environment ?? AppEnvironment()
         let window = UIWindow(windowScene: scene)
         window.overrideUserInterfaceStyle = environment.theme.interfaceStyle
+        // The scene's traits are the system's (the window's override does not reach them); web content follows them.
+        environment.theme.setSystemStyle(scene.traitCollection.userInterfaceStyle)
+        scene.registerForTraitChanges([UITraitUserInterfaceStyle.self]) { [weak environment] (scene: UIWindowScene, _: UITraitCollection) in
+            environment?.theme.setSystemStyle(scene.traitCollection.userInterfaceStyle)
+        }
         let root = RootTabBarController(environment: environment)
         window.rootViewController = root
         window.makeKeyAndVisible()

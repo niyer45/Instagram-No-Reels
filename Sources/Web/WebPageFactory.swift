@@ -1,4 +1,5 @@
 import WebKit
+import Combine
 
 /// Creates every WKWebView with the shared configuration (default persistent data store,
 /// inline media, no link previews or back/forward gestures), installs its user scripts and
@@ -12,12 +13,15 @@ final class WebPageFactory {
     private let boots = NSMapTable<WKWebView, BootBox>.weakToStrongObjects()
     /// The launch pre-warmed web view, until a page adopts it and claims its load.
     private var warm: Warm?
+    private var themeObservation: AnyCancellable?
 
     private final class BootBox { var boot: UserScripts.Boot; init(_ boot: UserScripts.Boot) { self.boot = boot } }
 
     init(following: FollowingStore, theme: Theme) {
         self.following = following
         self.theme = theme
+        // Web content follows the system appearance (Theme.webStyle), not the window's sampled style.
+        themeObservation = theme.changes.sink { [weak self] in self?.applyWebStyle() }
     }
 
     /// Live web views (pages, tray), for DEBUG memory diagnostics.
@@ -54,6 +58,7 @@ final class WebPageFactory {
         webView.allowsBackForwardNavigationGestures = false
         webView.allowsLinkPreview = false
         webView.isOpaque = false
+        webView.overrideUserInterfaceStyle = theme.webStyle
         webView.backgroundColor = theme.background
         webView.underPageBackgroundColor = theme.background
         webView.scrollView.backgroundColor = theme.background
@@ -65,6 +70,13 @@ final class WebPageFactory {
         if let receiver { bridge.register(receiver, for: webView) }
         boots.setObject(BootBox(boot), forKey: webView)
         return webView
+    }
+
+    private func applyWebStyle() {
+        for webView in boots.keyEnumerator().allObjects.compactMap({ $0 as? WKWebView })
+        where webView.overrideUserInterfaceStyle != theme.webStyle {
+            webView.overrideUserInterfaceStyle = theme.webStyle
+        }
     }
 
     /// Updates the boot values used by the web view's next documents (e.g. after its page kind changes).

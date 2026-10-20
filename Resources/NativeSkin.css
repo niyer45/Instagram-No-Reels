@@ -46,8 +46,8 @@ html[data-native-chrome="hidden"] body {
 
 /* === Home === */
 /* Native Home feed parity. Dark is the design target; light values follow
-   prefers-color-scheme, which the web view takes from the window style that Theme derives
-   from the page colour. Post-card rules apply only to cards FeedFilter approved on the feed
+   prefers-color-scheme, which the web view takes from the app appearance (Theme.webStyle;
+   never the window style derived from the page colour). Post-card rules apply only to cards FeedFilter approved on the feed
    (html[data-following-mode="feed"] [data-following-approved="yes"]) and use ARIA labels,
    link targets and element names only; anything not reachable that way stays unstyled.
    Selectors and fallbacks: docs/DOM-NOTES.md, "Home feed skin". */

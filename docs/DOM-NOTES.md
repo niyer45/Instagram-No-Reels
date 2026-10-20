@@ -64,6 +64,13 @@ Native applies the colour through `Theme.changes`, which fires after the colour 
 (a `@Published` sink fires in `willSet` and made every native surface one colour behind;
 that, not the sampling alone, is why earlier fixes for the login surface did not show).
 
+The sampled colour sets the native surfaces and the window's interface style, but never the
+page's own colour scheme: every web view's `overrideUserInterfaceStyle` is `Theme.webStyle`,
+the app appearance reported by the window scene (Dark through Info.plist `UIUserInterfaceStyle`;
+the system appearance if that key is removed; the scene's traits ignore the window override). Before, web views inherited the window
+style, so one light sample (for example a light login surface) made Instagram render light,
+which was sampled again, and the app stayed light until something dark was sampled.
+
 ## Stories tray (tray web view, `Bridge.js` role `tray`)
 
 | What | Selector / rule | Found | Fallback |

@@ -30,6 +30,19 @@ final class Theme: ObservableObject {
     /// Hairline separators (tab bar top border, header bottom border).
     var hairline: UIColor { isDark ? UIColor(white: 1, alpha: 0.12) : UIColor(white: 0, alpha: 0.12) }
 
+    /// The appearance web content renders in (`prefers-color-scheme`): the app's, as the window scene
+    /// reports it (Info.plist `UIUserInterfaceStyle` is Dark; without that key it is the system's),
+    /// never `interfaceStyle`. The scene's traits are not affected by the window's override. The window follows the sampled page colour; if web views
+    /// inherited that, a light sample (Meta's login page, say) would make Instagram render light,
+    /// which is sampled again, and the app would stay light. Dark until the scene reports.
+    private(set) var webStyle: UIUserInterfaceStyle = .dark
+
+    func setSystemStyle(_ style: UIUserInterfaceStyle) {
+        guard style != .unspecified, style != webStyle else { return }
+        webStyle = style
+        changed.send()
+    }
+
     func update(rgb: [Double], defaults: UserDefaults = .standard) {
         guard let color = Self.color(rgb), !color.isEqual(background) else { return }
         background = color
