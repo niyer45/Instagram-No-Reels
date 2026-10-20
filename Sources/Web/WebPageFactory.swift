@@ -3,12 +3,15 @@ import WebKit
 /// Creates every WKWebView with the shared configuration (default persistent data store,
 /// inline media, no link previews or back/forward gestures), installs its user scripts and
 /// registers it with the bridge. Keeps a weak registry so policy changes reach live pages.
+/// At launch it also pre-warms Home's web view (`prewarm`), which Home's page then adopts.
 @MainActor
 final class WebPageFactory {
     let bridge = WebBridge()
     private let following: FollowingStore
     private let theme: Theme
     private let boots = NSMapTable<WKWebView, BootBox>.weakToStrongObjects()
+    /// The launch pre-warmed web view, until a page adopts it and claims its load.
+    private var warm: Warm?
 
     private final class BootBox { var boot: UserScripts.Boot; init(_ boot: UserScripts.Boot) { self.boot = boot } }
 
@@ -17,8 +20,25 @@ final class WebPageFactory {
         self.theme = theme
     }
 
+    /// Live web views (pages, tray), for DEBUG memory diagnostics.
+    var liveWebViewCount: Int { boots.keyEnumerator().allObjects.count }
+
     /// Creates a web view; a receiver that cannot exist yet (during its owner's init) registers later via `bridge.register`.
+    /// A page whose boot has the pre-warmed web view's role and stories slot (Home) adopts that web view instead.
     func makeWebView(boot: UserScripts.Boot, receiver: WebBridgeReceiver?) -> WKWebView {
+        if let warm, !warm.adopted, warm.boot.role == boot.role, warm.boot.storiesSlot == boot.storiesSlot {
+            warm.adopted = true
+            let webView = warm.webView
+            if warm.boot != boot {
+                update(boot, for: webView)
+                webView.evaluateJavaScript("window.__instagram&&window.__instagram.layout({headerHeight:\(Double(boot.headerHeight)),storiesHeight:\(Double(boot.storiesHeight)),hideChrome:\(boot.hideChrome)})", completionHandler: nil)
+            }
+            if let receiver { bridge.register(receiver, for: webView) }
+            return webView
+        }
+        #if DEBUG
+        Diagnostics.launchMark("first-webview")
+        #endif
         let controller = WKUserContentController()
         controller.add(bridge, name: WebBridge.handlerName)
         for script in UserScripts.scripts(boot: boot, policy: following.policy) { controller.addUserScript(script) }
@@ -67,5 +87,56 @@ final class WebPageFactory {
         let controller = webView.configuration.userContentController
         controller.removeAllUserScripts()
         for script in UserScripts.scripts(boot: boot, policy: following.policy) { controller.addUserScript(script) }
+    }
+
+    // MARK: Launch pre-warm
+
+    /// Creates a page web view and starts loading `url` now, before any page exists, so WebKit's
+    /// processes and the first request overlap the shell's construction. One at a time.
+    func prewarm(url: URL, boot: UserScripts.Boot) {
+        guard warm == nil else { return }
+        let webView = makeWebView(boot: boot, receiver: nil)
+        let warm = Warm(webView: webView, url: url, boot: boot)
+        webView.navigationDelegate = warm
+        webView.load(URLRequest(url: url))
+        self.warm = warm
+        #if DEBUG
+        Diagnostics.launchMark("home-prewarm")
+        #endif
+    }
+
+    /// Called by the page that adopted the pre-warmed web view when it loads `url`: returns whether
+    /// that load is already under way (so the page must not start it again) and whether its document
+    /// has committed. Ends the pre-warm either way.
+    func claimPrewarmedLoad(of webView: WKWebView, url: URL) -> (inProgress: Bool, committed: Bool) {
+        guard let warm, warm.adopted, warm.webView === webView else { return (false, false) }
+        self.warm = nil
+        if webView.navigationDelegate === warm { webView.navigationDelegate = nil }
+        return warm.url == url ? (true, warm.committed) : (false, false)
+    }
+
+    /// Navigation delegate of the pre-warmed web view until its page adopts it: keeps main-frame
+    /// navigations on Instagram (the page re-checks everything afterwards) and notes the commit.
+    private final class Warm: NSObject, WKNavigationDelegate {
+        let webView: WKWebView
+        let url: URL
+        let boot: UserScripts.Boot
+        var adopted = false
+        var committed = false
+
+        init(webView: WKWebView, url: URL, boot: UserScripts.Boot) {
+            self.webView = webView
+            self.url = url
+            self.boot = boot
+        }
+
+        func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
+            guard action.targetFrame?.isMainFrame != false else { decisionHandler(.allow); return }
+            guard let target = action.request.url, InstagramNavigation.decision(for: target, following: []) == .allow,
+                  Route(url: target).kind != .blocked else { decisionHandler(.cancel); return }
+            decisionHandler(.allow)
+        }
+
+        func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) { committed = true }
     }
 }

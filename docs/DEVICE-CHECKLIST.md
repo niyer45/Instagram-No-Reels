@@ -90,3 +90,33 @@ the page, what you did and what you saw; never paste usernames or post content.
 - [ ] Open a post or profile from Home, a profile and the inbox, then swipe back: the page underneath still shows what it showed before (Instagram's router must not have rendered the opened page in place when Bridge.js cancelled its history change).
 - [ ] If Settings still links to `/accounts/password/change/`, it pushes normally and the session is not marked signed out (its password fields trip the login probes).
 - [ ] Scrolling a long Home feed stays smooth (Bridge.js samples the theme with `elementsFromPoint` on DOM-change frames).
+
+## Phase 2D — Hardening
+
+Simulator-verified where noted in the Phase 2D report; everything here needs a signed-in device.
+
+### Launch
+
+- [ ] Fresh install over the previous build: the splash ends as soon as Home's feed (and its Stories tray) is ready, noticeably sooner than before on a cold start; no white flash, no second splash.
+- [ ] Warm launches (app killed from the switcher, reopened) reach the feed within about 2–3 s on a good connection.
+- [ ] Signed in, the first page after launch is the Following feed with working links (tapping a profile pushes it); nothing behaves as if the first page were "still loading" (the pre-warmed feed is adopted by Home).
+
+### Offline and failures
+
+- [ ] Turn on Airplane Mode while on Home: a grey "No internet connection" strip slides in under the Home header (under the page header on other pages). Turning Airplane Mode off slides it away within a second or two.
+- [ ] With Airplane Mode on, pull to refresh Home or open a profile: the page shows "Couldn't refresh feed" / "Couldn't load profile", "No internet connection…" and a blue Retry button (not a blank page and not Instagram's own error).
+- [ ] Turning Airplane Mode off while that failure is showing reloads the page by itself, without tapping Retry.
+- [ ] Retry while still offline shows the failure again after the load fails; it never leaves an endless skeleton.
+- [ ] VoiceOver: the banner is announced when it appears; Retry reads "Retry, button"; while a skeleton or failure shows, swiping does not reach the hidden web page underneath.
+
+### Foreground refresh
+
+- [ ] Leave the app in the background for under 30 minutes (e.g. 5 minutes), return: every tab shows exactly what it showed, Home at the same scroll position; nothing reloads.
+- [ ] Leave the app in the background for over 30 minutes, return on Home: Home reloads behind its skeleton and shows the top of a fresh feed (other tabs unchanged).
+- [ ] Same, but return while on another tab: that tab is unchanged; Home reloads when you next tap it.
+
+### Memory
+
+- [ ] Push five or more pages in one tab (profile → post → profile → post → profile …), then swipe back one at a time: every page comes back with its content (deep pages briefly show their last image, then reload), and swipe-back keeps working.
+- [ ] After a long session across all four tabs (many pushes, story views), the app is not killed in the background more often than before.
+- [ ] With Home scrolled down, visit other tabs and use other heavy apps until iOS warns about memory (or Xcode's Debug → Simulate Memory Warning on device): returning to Home reloads it near the previous scroll position where the reloaded feed is long enough; Search and Notifications reload their pages.

@@ -245,22 +245,32 @@ up.
 ## 5. Checks (run before every commit)
 
 ```sh
-node --test Tests/*.test.cjs
-swiftc -module-cache-path "$TMPDIR/ig-mc" Sources/Filter/FollowingPolicy.swift Sources/Navigation/RouteClassifier.swift \
-  Sources/Navigation/RouteDecision.swift Sources/Support/SVGPath.swift Tests/*.swift -o "$TMPDIR/ig-policy" && "$TMPDIR/ig-policy"
-xcodebuild -project Following.xcodeproj -scheme Following -configuration Debug -sdk iphonesimulator \
-  -destination 'generic/platform=iOS Simulator' -derivedDataPath "$TMPDIR/ig-build" CODE_SIGNING_ALLOWED=NO build
+CHECK_TMP=<scratch dir> Tools/check.sh
 ```
 
-Simulator smoke (a booted iPhone simulator is available via `xcrun simctl`): install the
-Debug build, launch, take a screenshot of the login page inside the native shell and of
-each tab's skeleton. DEBUG builds read `SHELL_TAB`, `SHELL_SKELETON_PREVIEW=1` and
-`SHELL_OPEN_URL` (pass as `SIMCTL_CHILD_…` to `xcrun simctl launch`) to start on a tab,
-hold every page on its skeleton, or open a URL through the Router
-(`Sources/Support/DebugLaunchOptions.swift`). The first launch after a fresh install
-spends several seconds starting WebKit before the first navigation; measure timing on a
-second launch. Agents cannot sign in to Instagram; signed-in flows are validated by
-the owner on device, so log what needs device validation in `docs/DEVICE-CHECKLIST.md`.
+It runs, each reported on one line, and exits non-zero if any fails:
+
+- `node --test Tests/*.test.cjs`;
+- the Swift checks: `swiftc` over the pure sources listed once at the top of `Tools/check.sh`
+  plus `Tests/*.swift`, then the resulting binary;
+- the Debug simulator build (`xcodebuild … -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO`),
+  which fails on any compiler warning.
+
+Logs, module cache and derived data go to `$CHECK_TMP` (default `$TMPDIR/ig-check`; pass an
+explicit path where `$TMPDIR` is unavailable). `--no-build` skips the build. The script does
+not use git.
+
+Simulator smoke (a booted iPhone simulator is available via `xcrun simctl`):
+`Tools/simshots.sh <udid> [dir]` installs the Debug build and captures every tab live and on its
+skeleton, a pushed page, the failure state and the offline banner. DEBUG builds read `SHELL_TAB`,
+`SHELL_SKELETON_PREVIEW=1`, `SHELL_FAILURE_PREVIEW=1`, `SHELL_OPEN_URL`, `SHELL_OPEN_URLS`,
+`SHELL_OFFLINE`, `SHELL_MEMORY_WARNING` and `SHELL_STALE_AFTER` (passed as `SIMCTL_CHILD_…` to
+`xcrun simctl launch`; `Sources/Support/DebugLaunchOptions.swift`). `Tools/launch-timing.sh
+<udid> [runs]` reinstalls the app and prints launch milestones for a fresh-install launch and
+warm launches; the first launch after a fresh install spends several seconds starting WebKit,
+and timings on a loaded machine vary widely, so compare builds in alternating runs. Agents
+cannot sign in to Instagram; signed-in flows are validated by the owner on device, so log what
+needs device validation in `docs/DEVICE-CHECKLIST.md`.
 
 ## 6. Phases
 

@@ -54,8 +54,10 @@ then `body`, then `html`; the first opaque `background-color` wins. Before each 
 background, its children that cover the sample point with `pointer-events: none` are
 checked, because hit-testing skips them (seen: Meta's `/accounts/login/` paints its grey
 `rgb(31, 31, 32)` surface with a full-viewport absolute `div` with `pointer-events: none`
-under transparent wrappers, while `html`/`body` are `rgb(12, 16, 20)`). Re-sampled on DOM
-changes and 0.3, 1 and 2.5 s after `ready`. Only the visible page's colour is applied.
+under transparent wrappers, while `html`/`body` are `rgb(12, 16, 20)`). Sampled at `ready` and
+0.3, 1 and 2.5 s after it; then on DOM changes at most once per 500 ms (a trailing sample
+covers a burst), and at once on the first DOM change after a route change. Nothing is
+sampled before `ready` (the skeleton covers the page). Tests: `Tests/bridge-theme.test.cjs`. Only the visible page's colour is applied.
 Fallback: native keeps the last colour (persisted across launches).
 
 Native applies the colour through `Theme.changes`, which fires after the colour is stored

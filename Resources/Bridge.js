@@ -186,9 +186,13 @@ function checkReady(){
 }
 function queueFrame(){if(frameQueued)return;frameQueued=true;if(typeof requestAnimationFrame==='function')requestAnimationFrame(checkReady);else setTimeout(checkReady,16);}
 
-// Theme: mirror the page background to native surfaces.
-let lastTheme='';
-function postTheme(){if(typeof getComputedStyle!=='function')return;
+// Theme: mirror the page background to native surfaces. Sampling (elementsFromPoint plus computed styles) is
+// throttled: on readiness and its delayed re-samples, at once on the first DOM change after a route change, and
+// otherwise on DOM changes at most once per THEME_INTERVAL_MS after the page is ready (the skeleton covers it before).
+const THEME_INTERVAL_MS=500;
+let lastTheme='',themeAt=-Infinity,themeQueued=false,themeRoute='';
+function routeKey(){return location.pathname+location.search;}
+function postTheme(){if(typeof getComputedStyle!=='function')return;themeAt=now();themeRoute=routeKey();
  // The visible full-width surface at the top of the viewport (it meets the native status bar), then body/html.
  // elementsFromPoint returns the whole stack, including fixed background layers that are not ancestors.
  const width=window.innerWidth||0;
@@ -197,6 +201,14 @@ function postTheme(){if(typeof getComputedStyle!=='function')return;
  const covers=node=>{const r=node.getBoundingClientRect?node.getBoundingClientRect():null;return !!r&&r.width>=width*0.9&&r.top<=2&&r.bottom>2;};
  const rgb=surfaceRGB([...nodes,document.body,document.documentElement],node=>getComputedStyle(node),covers);
  if(rgb){const key=rgb.join(',');if(key!==lastTheme){lastTheme=key;post('theme',{backgroundRGB:rgb});}}}
+function requestTheme(){
+ if(!readySent)return;
+ if(routeKey()!==themeRoute){postTheme();return;}
+ if(themeQueued)return;
+ const wait=themeAt+THEME_INTERVAL_MS-now();
+ if(wait<=0){postTheme();return;}
+ themeQueued=true;setTimeout(()=>{themeQueued=false;postTheme();},wait);
+}
 
 // Web chrome: mark Instagram's tab bar, top bar and app banners so NativeSkin.css hides them.
 function pathOf(a){try{const u=new URL(a.getAttribute('href'),location.href);return official(u.href)?u.pathname:null;}catch(_){return null;}}
@@ -302,7 +314,7 @@ let chromeQueued=false;
 function onMutation(){
  if(role==='tray'){scanTray();return;}
  queueFrame();
- if(!chromeQueued){chromeQueued=true;const run=()=>{chromeQueued=false;applyLayout();scanChrome();postTheme();postRoute();};
+ if(!chromeQueued){chromeQueued=true;const run=()=>{chromeQueued=false;applyLayout();scanChrome();requestTheme();postRoute();};
   if(typeof requestAnimationFrame==='function')requestAnimationFrame(run);else setTimeout(run,16);}
 }
 new MutationObserver(onMutation).observe(document,{childList:true,subtree:true});
