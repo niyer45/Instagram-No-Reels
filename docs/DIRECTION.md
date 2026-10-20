@@ -316,7 +316,8 @@ skeleton, a pushed page, the failure state and the offline banner. DEBUG builds 
 `SHELL_SKELETON_PREVIEW=1`, `SHELL_FAILURE_PREVIEW=1`, `SHELL_OPEN_URL`, `SHELL_OPEN_URLS`,
 `SHELL_OFFLINE`, `SHELL_MEMORY_WARNING`, `SHELL_STALE_AFTER`, `SHELL_POP`, `SHELL_PRESENT` and
 Home's fixture harness `SHELL_HOME_FIXTURE`/`SHELL_HOME_DEMO` (passed as `SIMCTL_CHILD_…` to
-`xcrun simctl launch`; `Sources/Support/DebugLaunchOptions.swift`). `Tools/launch-timing.sh
+`xcrun simctl launch`; `Sources/Support/DebugLaunchOptions.swift`). `Tools/sim-memory.sh <udid>` prints the app's and its
+WebKit processes' resident memory (host RSS; compare runs on one machine only). `Tools/launch-timing.sh
 <udid> [runs]` reinstalls the app and prints launch milestones for a fresh-install launch and
 warm launches; the first launch after a fresh install spends several seconds starting WebKit,
 and timings on a loaded machine vary widely, so compare builds in alternating runs. Agents

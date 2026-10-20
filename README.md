@@ -76,7 +76,7 @@ Tools/check.sh             # node tests, Swift checks, unsigned Debug simulator 
 Tools/check.sh --no-build  # node tests and Swift checks only
 ```
 
-- **node:** the JavaScript filter, bridge, theme-sampling and Story-navigation tests (`Tests/*.test.cjs`).
+- **node:** the JavaScript filter, bridge, theme-sampling, Story-navigation and Search/Notifications/Profile tab tests (`Tests/*.test.cjs`).
 - **swift:** the import, navigation-policy, route-table and SVG-path checks, compiled with `swiftc` from the source list at the top of `Tools/check.sh`.
 - **build:** `xcodebuild` Debug for the simulator with `CODE_SIGNING_ALLOWED=NO`.
 
@@ -87,9 +87,10 @@ With a booted simulator, after `Tools/check.sh`:
 ```sh
 Tools/simshots.sh <simulator-udid> [output-dir]    # every tab, its skeleton, a pushed page, failure and offline states
 Tools/launch-timing.sh <simulator-udid> [runs]     # fresh-install and warm launch-to-ready timings
+Tools/sim-memory.sh <simulator-udid>               # resident memory of the app and its WebKit processes
 ```
 
-These use Debug-only launch environment values (`SHELL_TAB`, `SHELL_SKELETON_PREVIEW`, `SHELL_FAILURE_PREVIEW`, `SHELL_OPEN_URL(S)`, `SHELL_OFFLINE`, `SHELL_MEMORY_WARNING`, `SHELL_STALE_AFTER`; see `Sources/Support/DebugLaunchOptions.swift`); Release builds exclude them. Debug builds also keep local diagnostics files (filter events and launch milestones) with counts, timings and enumerated reasons only.
+These use Debug-only launch environment values (`SHELL_TAB`, `SHELL_SKELETON_PREVIEW`, `SHELL_FAILURE_PREVIEW`, `SHELL_OPEN_URL(S)`, `SHELL_OFFLINE`, `SHELL_MEMORY_WARNING`, `SHELL_STALE_AFTER`, `SHELL_POP`, `SHELL_PRESENT`, and Home's fixture harness `SHELL_HOME_FIXTURE`/`SHELL_HOME_DEMO`; see `Sources/Support/DebugLaunchOptions.swift`); Release builds exclude them. Debug builds also keep local diagnostics files (filter events and launch milestones) with counts, timings and enumerated reasons only.
 
 The simulator cannot sign in to Instagram, so signed-in behaviour is validated on device with [`docs/DEVICE-CHECKLIST.md`](docs/DEVICE-CHECKLIST.md). Sanitized results for 0.4.x in [`Evidence/`](Evidence/) cover the previous architecture.
 
@@ -115,7 +116,7 @@ Sources/Filter/        Following import/navigation policy, filter status, Conten
 Sources/Support/       Theme, connectivity, glyphs, SVG path parser, haptics, diagnostics, DEBUG launch hooks
 Resources/             Feed filter, bridge, native skin, app configuration, icons
 Tests/                 JavaScript and Swift regression checks, shared route fixtures
-Tools/                 check.sh (all checks), simshots.sh (simulator screenshots), launch-timing.sh
+Tools/                 check.sh (all checks), simshots.sh (simulator screenshots), launch-timing.sh, sim-memory.sh
 docs/                  Program direction, DOM notes, device checklist
 Evidence/              Sanitized device-check results from 0.4.x
 ```

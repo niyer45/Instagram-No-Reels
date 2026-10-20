@@ -32,8 +32,10 @@ only, Oct 2026); **inherited** = relied on by the 0.4.x app on a signed-in devic
 | `a[href^="/accounts/login"]` with no `article` on the page | assumed | Next rule. |
 | A button whose whole text is "Log in", outside `[role="menu"]`/`[role="dialog"]` | seen (landing) | Readiness fallback reveals the page after 4–8 s; Home header and tray stay visible over Instagram's landing. |
 
-FeedFilter's own `login` status (`input[type="password"]`, or no posts/records and
-`main a[href^="/accounts/login"]`) is unchanged and also marks the page as login content.
+FeedFilter's own `login` status also marks the page as login content: a sign-in route (the same
+login sets as `classify`), an `input[type="password"]` outside signed-in `/accounts/` pages (so
+`/accounts/password/change/` is not login), or no posts/records and `main a[href^="/accounts/login"]`.
+Other `/accounts/` pages (`/accounts/activity/`, `/accounts/edit/`) are not login routes (Phase 2).
 
 ## Readiness probes (`Bridge.js`, held for 6 frames; Search 24 stable frames)
 

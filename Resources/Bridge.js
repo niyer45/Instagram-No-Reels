@@ -531,7 +531,7 @@ function tabScanProfile(){
   const cell=tile.parentElement,row=cell&&cell.parentElement;if(!row)continue;
   const cells=Array.from(row.children||[]).filter(child=>child.querySelector&&child.querySelector('a[href] img'));if(cells.length<2||cells.length>4)continue;
   tabSet(tile,'data-native-grid-tile');tabSet(cell,'data-native-grid-cell');tabSet(row,'data-native-grid-row');tabSet(row.parentElement,'data-native-grid');
-  // The aspect box: a padding-based ratio element inside the tile (made square by the skin).
+  // The aspect box: a padding-based ratio element inside the tile (set to 3:4 portrait by the skin).
   for(const box of tile.querySelectorAll('div')){const css=typeof getComputedStyle==='function'?getComputedStyle(box):null;
    if(css&&/%$|[1-9]/.test(css.paddingBottom||'')&&parseFloat(css.height)===0){tabSet(box,'data-native-grid-ratio');break;}
    if(/padding-bottom:\s*[\d.]+%/.test(box.getAttribute('style')||'')){tabSet(box,'data-native-grid-ratio');break;}}
