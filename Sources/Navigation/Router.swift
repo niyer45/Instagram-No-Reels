@@ -1,25 +1,33 @@
 import UIKit
 import SwiftUI
+import Combine
+import SafariServices
 
 /// Performs navigations natively: URL -> Route -> Presentation (push, full-screen modal,
 /// tab switch, root replacement for login, or block). Every page hands off here when
 /// Bridge.js or the navigation delegate decides a navigation leaves the current page.
+/// Links outside Instagram open in Safari View Controller; Reels and app redirects are dropped silently.
 @MainActor
 final class Router {
-    weak var environment: AppEnvironment?
+    weak var environment: AppEnvironment? { didSet { observeSession() } }
     weak var shell: RootTabBarController?
+    private var sessionObservation: AnyCancellable?
+    private var lastSession: AccountStore.Session?
 
     func open(_ url: URL, from page: WebPageViewController?) {
+        guard RouteDecision.isOfficial(url) else { openExternal(url, userInitiated: false, from: page); return }
         let policy = InstagramNavigation.decision(for: url, following: [])
         guard policy == .allow else { report(policy); return }
         guard let shell, let environment else { return }
         let route = Route(url: url)
         let presentation = Presentation(kind: route.kind)
+        if presentation == .block { report(.blockReels); return }
 
-        // Leaving Instagram's login flow means the web session is now signed in.
-        if let page, page.route.kind == .login, route.kind != .login, presentation != .block {
-            environment.account.markSignedIn()
-            shell.resetTabs()
+        // A tab root on Instagram's login page opens where Instagram goes after signing in in place. Whether that
+        // means a session is decided by what the page then shows (SessionEvidence), never by this navigation; legal
+        // and help links from the login page push normally.
+        if let page, case .tabRoot = page.placement, page.route.kind == .login, SessionEvidence.opensInPlaceFromLogin(route) {
+            page.load(url)
             return
         }
         // From a full-screen page: Home (closing a viewer) just dismisses; anything else
@@ -42,9 +50,7 @@ final class Router {
             navigation.pushViewController(makePage(url, placement: .pushed), animated: true)
             Haptics.push()
         case .fullScreen:
-            let modal = makePage(url, placement: .modal)
-            modal.modalPresentationStyle = .fullScreen
-            modal.modalTransitionStyle = .crossDissolve
+            let modal = ModalContainerController(content: makePage(url, placement: .modal))
             shell.topmostPresenter.present(modal, animated: true)
         case .replaceRoot:
             environment.account.markSignedOut()
@@ -60,6 +66,78 @@ final class Router {
         }
         return WebPageViewController(environment: environment, url: url, placement: placement)
     }
+
+    // MARK: External links
+
+    /// Opens a non-Instagram URL like the native app: tapped web links in Safari View Controller over the current
+    /// page, mail and phone links in the system, Instagram's link shim unwrapped; everything else is dropped silently.
+    func openExternal(_ url: URL, userInitiated: Bool, from page: WebPageViewController?) {
+        switch ExternalLink.decide(url, userInitiated: userInitiated) {
+        case .safari(let target):
+            guard let shell else { return }
+            let presenter = shell.topmostPresenter
+            if presenter is SFSafariViewController { return }
+            if page?.isLoginContent == true, let host = target.host?.lowercased(), ["facebook.com", "fb.com", "meta.com"].contains(where: { host == $0 || host.hasSuffix("." + $0) }) {
+                // A Facebook sign-in in Safari would not sign this app in.
+                alert("Log in with your Instagram username and password here. Signing in with Facebook isn’t available in this app.")
+                return
+            }
+            let configuration = SFSafariViewController.Configuration()
+            configuration.entersReaderIfAvailable = false
+            let safari = SFSafariViewController(url: target, configuration: configuration)
+            safari.dismissButtonStyle = .close
+            presenter.present(safari, animated: true)
+        case .system(let target):
+            UIApplication.shared.open(target)
+        case .instagram(let target):
+            open(target, from: page)
+        case .ignore:
+            dropped("external")
+        }
+    }
+
+    // MARK: Session
+
+    /// A page reported `ready`; a ready signed-in kind is evidence of a session (legal/about/lite pages never are).
+    func page(_ page: WebPageViewController, didBecomeReady kind: RouteKind) {
+        guard let environment, SessionEvidence.signsIn(ready: kind, route: page.route), !page.isLoginContent else { return }
+        environment.account.markSignedIn()
+    }
+
+    private func observeSession() {
+        sessionObservation = environment?.account.$session.sink { [weak self] session in
+            // Use the emitted value: @Published fires before the store's property changes.
+            guard let self else { return }
+            let previous = self.lastSession
+            self.lastSession = session
+            guard previous == .signedOut, session == .signedIn else { return }
+            // Not from inside the bridge callback that produced the evidence: that page may be rebuilt.
+            DispatchQueue.main.async { [weak self] in self?.rebuildTabsAfterSignIn() }
+        }
+    }
+
+    /// Replaces the roots of tabs still showing a login page (or another tab's page) with their own root pages.
+    /// Tabs already showing their own content keep their stacks, so a stray signed-out signal costs nothing.
+    private func rebuildTabsAfterSignIn() {
+        guard let shell, let environment else { return }
+        for (tab, navigation) in shell.navigations {
+            guard let root = navigation.viewControllers.first as? WebPageViewController else { continue }
+            let homeIsPlain = tab == .home && !(root is HomePageViewController)
+            guard homeIsPlain || SessionEvidence.rebuildsAfterSignIn(root: root.route, isLoginContent: root.isLoginContent, tabKind: Self.rootKind(of: tab)) else { continue }
+            navigation.setViewControllers([makePage(tab.rootURL(account: environment.account), placement: .tabRoot(tab))], animated: false)
+        }
+    }
+
+    private static func rootKind(of tab: TabItem) -> RouteKind {
+        switch tab {
+        case .home: return .home
+        case .search: return .search
+        case .activity: return .activity
+        case .profile: return .profile
+        }
+    }
+
+    // MARK: Content filters
 
     /// Shows the Content filters sheet.
     func presentSettings() {
@@ -90,13 +168,20 @@ final class Router {
         presenter.present(controller, animated: true)
     }
 
+    /// Blocked destinations are dropped silently, like the native app (which never shows Reels or app redirects).
     func report(_ decision: NavigationDecision) {
         switch decision {
         case .allow: return
-        case .blockReels: alert("Reels are disabled.")
-        case .blockExternal: alert("External links and app redirects are disabled. Sign in directly on Instagram’s login page.")
-        case .blockUnknown: alert("This destination is not supported.")
+        case .blockReels: dropped("reels")
+        case .blockExternal, .blockUnknown: dropped("external")
         }
+    }
+
+    /// DEBUG event log only: an enumerated reason, never the URL.
+    private func dropped(_ reason: String) {
+        #if DEBUG
+        Diagnostics.record("navigation-dropped", labels: ["reason": reason])
+        #endif
     }
 
     func alert(_ message: String) {

@@ -71,16 +71,20 @@ function page({path='/',role='page',boot={}}={}){
  const document={documentElement:root,readyState:'loading',title:'Instagram',body:null,
   querySelector:()=>null,querySelectorAll:()=>[],createElement:()=>({}),addEventListener:(k,f)=>{listeners['doc:'+k]=f;}};
  const location={pathname:path.split('?')[0],search:path.includes('?')?path.slice(path.indexOf('?')):'',get href(){return 'https://www.instagram.com'+this.pathname+this.search;}};
- const history={pushState(a,b,u){const x=new URL(u,location.href);location.pathname=x.pathname;location.search=x.search;},replaceState(a,b,u){const x=new URL(u,location.href);location.pathname=x.pathname;location.search=x.search;}};
- const window={innerWidth:400,innerHeight:800,__instagramBoot:{role,...boot},webkit:{messageHandlers:{instagram:{postMessage:m=>posted.push(m)}}},addEventListener:(k,f)=>{listeners['win:'+k]=f;}};
+ const history={state:{entry:1},pushState(a,b,u){const x=new URL(u,location.href);location.pathname=x.pathname;location.search=x.search;this.state=a;},replaceState(a,b,u){const x=new URL(u,location.href);location.pathname=x.pathname;location.search=x.search;this.state=a;}};
+ const dispatched=[];
+ const window={innerWidth:400,innerHeight:800,__instagramBoot:{role,...boot},webkit:{messageHandlers:{instagram:{postMessage:m=>posted.push(m)}}},addEventListener:(k,f)=>{listeners['win:'+k]=f;},
+  dispatchEvent(e){dispatched.push(e);if(listeners['win:'+e.type])listeners['win:'+e.type](e);return true;}};
  window.top=window;
- const context={window,document,location,history,URL,WeakSet,Element:class{},setTimeout:()=>0,requestAnimationFrame:f=>frames.push(f),
+ class Event{constructor(type){this.type=type;}}
+ class PopStateEvent extends Event{constructor(type,init){super(type);this.state=init?init.state:null;}}
+ const context={window,document,location,history,URL,WeakSet,Event,PopStateEvent,Element:class{},setTimeout:()=>0,requestAnimationFrame:f=>frames.push(f),
   performance:{now:()=>0},getComputedStyle:()=>({display:'block',visibility:'visible',opacity:'1',position:'static',backgroundColor:'rgb(12, 16, 20)'}),
   MutationObserver:class{constructor(f){listeners.mutation=f;}observe(){}}};
  vm.runInNewContext(source,context);
- return {posted,listeners,frames,attrs,styles,context,window,document,location,history,
+ return {posted,listeners,frames,attrs,styles,context,window,document,location,history,dispatched,
   click(href){let prevented=0;const link={href:new URL(href,location.href).href,getAttribute:()=>href};
-   listeners['doc:click']({target:{closest:s=>s==='a[href]'?link:null},preventDefault(){prevented++;},stopImmediatePropagation(){}});return prevented;},
+   listeners['win:click']({target:{closest:s=>s==='a[href]'?link:null},preventDefault(){prevented++;},stopImmediatePropagation(){}});return prevented;},
   flush(n=1){for(let i=0;i<n;i++){const run=frames.splice(0);for(const f of run)f();}},
   of:type=>posted.filter(m=>m.type===type).map(m=>JSON.parse(JSON.stringify(m)))};
 }
@@ -174,4 +178,52 @@ test('login content on any route (password form or logged-out landing) is report
  menu.flush(7);assert.equal(menu.of('ready').length,0);
  const signedIn=page({path:'/'});signedIn.document.querySelector=s=>s.includes('a[href^="/accounts/login"]')||s==='article'?{}:null;
  signedIn.flush(7);assert.equal(signedIn.of('ready').length,0);
+});
+
+// Navigation: cancelled history changes, tray login redirects, settings password pages.
+function routeContent(p){
+ const content={main:{querySelectorAll:()=>[],textContent:'',firstElementChild:{id:'profile'},querySelector:s=>s==='header'?content.header:s==='article'?content.article:null},header:{id:'header'},article:null};
+ p.document.querySelector=s=>s==='main'?content.main:null;return content;
+}
+test('a cancelled history change that Instagram rendered in place is undone with a popstate for the unchanged location',()=>{
+ const p=page({path:'/alice/'});const content=routeContent(p);
+ p.history.pushState({entry:2},'','/p/ABC/');
+ assert.equal(p.location.pathname,'/alice/');assert.deepEqual(p.of('navigate').map(m=>m.url),['https://www.instagram.com/p/ABC/']);
+ // Instagram's router renders the post into the profile's main after its pushState returned.
+ content.main.firstElementChild={id:'post'};content.header=null;content.article={id:'article'};
+ p.flush(1);assert.equal(p.dispatched.length,0);p.flush(1);
+ assert.equal(p.dispatched.length,1);assert.equal(p.dispatched[0].type,'popstate');assert.deepEqual(p.dispatched[0].state,{entry:1});
+ assert.equal(p.location.pathname,'/alice/');
+});
+test('a cancelled history change that left the page alone dispatches nothing',()=>{
+ const p=page({path:'/alice/'});routeContent(p);
+ p.history.pushState({},'','/p/ABC/');p.flush(4);assert.equal(p.dispatched.length,0);
+ p.history.replaceState({},'','/reels/');p.flush(4);assert.equal(p.dispatched.length,0);assert.equal(p.of('navigate').length,1);
+});
+test('content rendered before the cancelled pushState is compared with the state at the last touch',()=>{
+ const p=page({path:'/?variant=following'});const content=routeContent(p);
+ p.listeners['win:pointerdown']();
+ content.main.firstElementChild={id:'thread'};
+ p.history.pushState({},'','/direct/t/1/');p.flush(2);
+ assert.equal(p.dispatched.length,1);assert.equal(p.location.pathname,'/');
+ // Without a recent touch the baseline is the document at the cancel.
+ const q=page({path:'/alice/'});const later=routeContent(q);later.main.firstElementChild={id:'changed-before'};
+ q.history.pushState({},'','/bob/');q.flush(2);assert.equal(q.dispatched.length,0);
+});
+test('links are decided in the window capturing phase, before Instagram handlers',()=>{
+ const p=page({path:'/alice/'});assert.equal(typeof p.listeners['win:click'],'function');assert.equal(p.listeners['doc:click'],undefined);
+ assert.equal(p.click('https://l.instagram.com/?u=https%3A%2F%2Fexample.com%2F'),0);assert.equal(p.of('navigate').length,0);
+ assert.equal(p.click('/explore/search/keyword/?q=cats'),1);assert.deepEqual(p.of('navigate').map(m=>m.url),['https://www.instagram.com/explore/search/keyword/?q=cats']);
+});
+test('the tray never hands a login redirect to native',()=>{
+ const p=page({path:'/',role:'tray'});
+ p.history.replaceState({},'','/accounts/login/?next=%2F');p.history.pushState({},'','/challenge/1/');
+ assert.equal(p.location.pathname,'/');assert.equal(p.of('navigate').length,0);
+ p.history.pushState({},'','/alice/');assert.deepEqual(p.of('navigate').map(m=>m.url),['https://www.instagram.com/alice/']);
+});
+test('a settings page with password fields is ready as settings, not as login content',()=>{
+ const p=page({path:'/accounts/password/change/'});p.document.querySelector=s=>s.includes('input[type="password"]')?{}:null;
+ p.flush(7);assert.deepEqual(p.of('ready'),[{type:'ready',kind:'settings'}]);
+ const reset=page({path:'/accounts/password/reset/'});reset.document.querySelector=s=>s.includes('input[type="password"]')?{}:null;
+ reset.flush(7);assert.deepEqual(reset.of('ready'),[{type:'ready',kind:'login'}]);
 });

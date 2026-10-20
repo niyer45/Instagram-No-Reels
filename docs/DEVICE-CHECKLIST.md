@@ -120,3 +120,26 @@ Simulator-verified where noted in the Phase 2D report; everything here needs a s
 - [ ] Push five or more pages in one tab (profile → post → profile → post → profile …), then swipe back one at a time: every page comes back with its content (deep pages briefly show their last image, then reload), and swipe-back keeps working.
 - [ ] After a long session across all four tabs (many pushes, story views), the app is not killed in the background more often than before.
 - [ ] With Home scrolled down, visit other tabs and use other heavy apps until iOS warns about memory (or Xcode's Debug → Simulate Memory Warning on device): returning to Home reloads it near the previous scroll position where the reloaded feed is long enough; Search and Notifications reload their pages.
+
+## Phase 2B — Navigation
+
+Supersedes two items above: Reels links and the profile Reels tab now do nothing (no "Reels are disabled." alert), and
+external links open in Safari View Controller instead of showing the "External links … disabled" alert.
+
+- [ ] Tapping a post, profile, comments ("View all … comments"), likes, a followers/following count, a hashtag, a location and a notification row pushes a page with the standard slide and a light haptic; going back has no haptic.
+- [ ] Titles: "Post", "Comments", "Likes", the username on profiles and on followers/following lists, "Notifications", your username on the inbox, the other person's name on a thread, "New message", "Edit profile" (or Instagram's heading) on settings pages, "#tag" on hashtag pages.
+- [ ] In Search, submitting a keyword (`/explore/search/keyword/?q=…`) pushes a results page titled with the query, with a back chevron; nothing strands you without a back control.
+- [ ] Open a post or profile from Home, from a profile and from the inbox, then swipe back: the page underneath still shows what it showed before (no copy of the opened page, no reset to the top). If it did reset or reload once, note which page.
+- [ ] A message thread hides the tab bar: it slides away with the inbox on push and comes back with the inbox on pop, including an interactive swipe-back; a cancelled swipe-back keeps it hidden. The composer sits at the bottom edge above the home indicator, not 49 pt above it.
+- [ ] Pages opened from a thread (e.g. the other person's profile) also have no tab bar; popping back to the inbox restores it.
+- [ ] Swipe back only works from the left screen edge. Swiping horizontally through a post carousel, the Stories tray or profile highlights never pops the page.
+- [ ] A story ring on another profile opens the story full screen with no status bar and no tab bar. Swiping down drags it away (the profile shows behind it) and closes it after about 120 pt or a quick flick; a shorter, slow drag springs back. Instagram's own close "X" also closes it. The profile underneath is exactly as before (no reload, same scroll position).
+- [ ] Bio links and links in captions open in an in-app Safari sheet with a Done/close button; closing it returns to the same page. App Store badges and "Open in app" prompts do nothing and show no alert.
+- [ ] Email/phone buttons on business profiles open Mail/Phone.
+- [ ] Settings links to Accounts Center (`accountscenter.instagram.com`) open in the Safari sheet; note whether that page asks you to sign in again there.
+- [ ] Sign-in from the Home tab (including "Save your login info?") ends on the Following feed with the native header and Stories tray; Search, Notifications and Profile that showed login show their own pages afterwards without a further reset.
+- [ ] On the login and sign-up pages, Terms, Privacy, Data Policy and "About" links push a page with a back chevron; nothing resets the tabs and you are not treated as signed in.
+- [ ] Settings → Change password (`/accounts/password/change/`) pushes normally and keeps its header; afterwards Home and Profile still behave as signed in (no tab reset after returning).
+- [ ] Notifications tab while signed in keeps its "Notifications" header. Known risk outside this workstream: FeedFilter reports state `login` for every `/accounts/…` route, which native treats as login content.
+- [ ] Logged in, the Stories tray never turns the Home tab into a login page (e.g. after a long time in the background).
+- [ ] "Log in with Facebook" on the login page shows a short explanation instead of opening Facebook.

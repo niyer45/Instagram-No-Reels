@@ -18,7 +18,7 @@ struct Route: Equatable {
     private static let loginAccounts: Set<String> = ["login", "emailsignup", "signup", "password", "onetap", "logout", "suspended", "disabled"]
     private static let otherRoots: Set<String> = ["about", "legal", "privacy", "terms", "developer", "web", "emails", "session", "press", "api", "graphql", "ajax", "static", "_u"]
     private static let profileTabs: Set<String> = ["tagged", "saved", "feed"]
-    private static let explorePages: Set<String> = ["tags", "locations"]
+    private static let explorePages: Set<String> = ["tags", "locations", "people"]
 
     init(kind: RouteKind, identity: String = "") {
         self.kind = kind
@@ -35,8 +35,9 @@ struct Route: Equatable {
         if Self.blocked.contains(first) { self.init(kind: .blocked); return }
         switch first {
         case "explore":
-            // Hashtag and location pages are content pages of their own, not the Search tab.
-            if Self.explorePages.contains(second) { self.init(kind: .other, identity: normal); return }
+            // Hashtag, location, people and keyword-result pages are content pages of their own, not the Search tab.
+            let keyword = second == "search" && parts.count > 2 && parts[2].lowercased() == "keyword"
+            if Self.explorePages.contains(second) || keyword { self.init(kind: .other, identity: normal); return }
             self.init(kind: .search); return
         case "stories": self.init(kind: .stories); return
         case "create": self.init(kind: .create); return
@@ -77,6 +78,59 @@ struct Route: Equatable {
     }
 
     init(url: URL) { self.init(path: url.path.isEmpty ? "/" : url.path) }
+
+    /// Full-height pages (message threads, the new-message composer) hide the tab bar while open, like the native app.
+    var hidesTabBar: Bool { kind == .thread || identity == "/direct/new/" }
+
+    /// Instagram's public information pages (legal, about, help, the lite app page): never evidence of a session.
+    var isPublicInformation: Bool {
+        kind == .other && ["/legal/", "/about/", "/privacy/", "/terms/", "/web/", "/press/", "/developer/"].contains { identity.hasPrefix($0) }
+    }
+
+    /// The native header title for this route, like Instagram's app: static names for fixed pages, the username for
+    /// profiles and their follower lists, the signed-in username for the inbox, and the page's own heading (`webTitle`,
+    /// from the bridge `route` message) for threads, settings and other pages, with a static fallback.
+    func title(query: String = "", webTitle: String = "", ownUsername: String? = nil) -> String {
+        let web = webTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        func fallback(_ value: String) -> String { web.isEmpty ? value : web }
+        switch kind {
+        case .home, .stories, .create, .login, .blocked: return ""
+        case .search: return "Search"
+        case .profile: return identity.isEmpty ? (ownUsername ?? "") : identity
+        case .post: return "Post"
+        case .comments: return "Comments"
+        case .likes: return "Likes"
+        case .activity: return "Notifications"
+        case .inbox: return ownUsername ?? "Messages"
+        case .thread: return fallback("Message")
+        case .settings: return fallback(Self.settingsTitles[identity] ?? "Settings")
+        case .other: return otherTitle(query: query, web: web)
+        }
+    }
+
+    private static let settingsTitles: [String: String] = [
+        "/accounts/edit/": "Edit profile",
+        "/accounts/password/change/": "Change password",
+        "/accounts/privacy_and_security/": "Account privacy",
+        "/accounts/settings/": "Settings and activity",
+        "/settings/": "Settings and activity",
+    ]
+
+    private func otherTitle(query: String, web: String) -> String {
+        let parts = identity.split(separator: "/").map(String.init)
+        switch (parts.first ?? "", parts.count > 1 ? parts[1] : "") {
+        case ("explore", "tags") where parts.count > 2: return "#" + parts[2]
+        case ("explore", "locations"): return web.isEmpty ? "Location" : web
+        case ("explore", "people"): return "Discover people"
+        case ("explore", "search"):
+            let term = URLComponents(string: "?" + query.drop(while: { $0 == "?" }))?.queryItems?.first { $0.name == "q" }?.value ?? ""
+            return term.isEmpty ? "Search" : term
+        case ("direct", "new"): return "New message"
+        case ("direct", "requests"): return "Message requests"
+        case (let user, "followers"), (let user, "following"): return Self.isHandle(user) && parts.count == 2 ? user : web
+        default: return web
+        }
+    }
 
     private static func isHandle(_ value: String) -> Bool {
         !value.isEmpty && value.count <= 30 && value.unicodeScalars.allSatisfy {

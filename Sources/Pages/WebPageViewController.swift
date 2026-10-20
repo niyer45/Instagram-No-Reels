@@ -252,19 +252,12 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
         return button
     }
 
+    /// Native titles come from the route table (`Route.title`, fixture-checked); the page's own heading is used for
+    /// threads, settings and other pages.
     func updateTitle() {
         guard let header = pageHeader else { return }
-        switch (placement, route.kind) {
-        case (.tabRoot(.activity), _), (_, .activity): header.title = "Notifications"
-        case (_, .profile): header.title = route.identity.isEmpty ? (environment.account.username ?? "") : route.identity
-        case (_, .post): header.title = "Post"
-        case (_, .comments): header.title = "Comments"
-        case (_, .likes): header.title = "Likes"
-        case (_, .inbox): header.title = "Messages"
-        case (_, .thread): header.title = webTitle.isEmpty ? "Message" : webTitle
-        case (_, .settings): header.title = webTitle.isEmpty ? "Settings" : webTitle
-        default: header.title = webTitle
-        }
+        if placement == .tabRoot(.activity) { header.title = "Notifications"; return }
+        header.title = route.title(query: (webView.url ?? url)?.query ?? "", webTitle: webTitle, ownUsername: environment.account.username)
     }
 
     /// Re-evaluates header visibility and web layout after the page kind changes.
@@ -721,6 +714,7 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
             environment.router.open(target, from: self)
         case .ready(let readyKind):
             if readyKind == .login { setLoginContent(true); environment.account.markSignedOut() }
+            environment.router.page(self, didBecomeReady: readyKind)
             markReady()
         case .status(let status):
             setLoginContent(route.kind == .login || status.state == .login)
@@ -781,6 +775,12 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
         guard let target = action.request.url else { decisionHandler(.cancel); return }
         // Subframes (login challenges, embeds) never become pages of their own.
         if action.targetFrame?.isMainFrame == false { decisionHandler(.allow); return }
+        // Other sites: tapped links open in Safari View Controller; redirects and app links are dropped silently.
+        guard RouteDecision.isOfficial(target) else {
+            decisionHandler(.cancel)
+            environment.router.openExternal(target, userInitiated: action.navigationType == .linkActivated, from: self)
+            return
+        }
         let policy = InstagramNavigation.decision(for: target, following: [])
         guard policy == .allow else { decisionHandler(.cancel); environment.router.report(policy); return }
         let next = Route(url: target)
@@ -847,7 +847,12 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
     // MARK: WKUIDelegate
 
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if let target = action.request.url { environment.router.open(target, from: self) }
+        guard let target = action.request.url else { return nil }
+        if RouteDecision.isOfficial(target) {
+            environment.router.open(target, from: self)
+        } else {
+            environment.router.openExternal(target, userInitiated: action.navigationType == .linkActivated, from: self)
+        }
         return nil
     }
 

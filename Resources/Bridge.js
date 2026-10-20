@@ -11,7 +11,7 @@ const LOGIN_ROOTS=new Set(['challenge','checkpoint','two_factor','consent','oaut
 const LOGIN_ACCOUNTS=new Set(['login','emailsignup','signup','password','onetap','logout','suspended','disabled']);
 const OTHER_ROOTS=new Set(['about','legal','privacy','terms','developer','web','emails','session','press','api','graphql','ajax','static','_u']);
 const PROFILE_TABS=new Set(['tagged','saved','feed']);
-const EXPLORE_PAGES=new Set(['tags','locations']);
+const EXPLORE_PAGES=new Set(['tags','locations','people']);
 const FLOW_KINDS=new Set(['login','stories','create']);
 const HANDLE=/^[a-z0-9._]{1,30}$/;
 const SEARCH_STABLE_FRAMES=24,READY_STABLE_FRAMES=6,FALLBACK_MS={home:8000,default:4000},GIVE_UP_MS=25000;
@@ -25,8 +25,8 @@ function classify(pathname){
  const first=parts[0].toLowerCase(),second=(parts[1]||'').toLowerCase();
  const other={kind:'other',identity:normal(parts)};
  if(BLOCKED.has(first))return {kind:'blocked',identity:''};
- // Hashtag and location pages are content pages of their own, not the Search tab.
- if(first==='explore')return EXPLORE_PAGES.has(second)?other:{kind:'search',identity:''};
+ // Hashtag, location, people and keyword-result pages are content pages of their own, not the Search tab.
+ if(first==='explore')return EXPLORE_PAGES.has(second)||second==='search'&&(parts[2]||'').toLowerCase()==='keyword'?other:{kind:'search',identity:''};
  if(first==='stories')return {kind:'stories',identity:''};
  if(first==='create')return {kind:'create',identity:''};
  if(first==='direct'){if(second==='t'&&parts[2])return {kind:'thread',identity:parts[2]};if(!second||second==='inbox')return {kind:'inbox',identity:''};return other;}
@@ -55,7 +55,8 @@ function decide(currentHref,targetHref,role='page'){
  let target;try{target=new URL(targetHref,currentHref);}catch(_){return 'pass';}
  if(!official(target.href))return 'pass';
  const t=classify(target.pathname);if(t.kind==='blocked')return 'block';
- if(role==='tray')return t.kind==='stories'||t.kind==='home'?'stay':'native';
+ // The tray never hands login redirects to native: they would replace the Home root (the tray shows itself).
+ if(role==='tray')return t.kind==='stories'||t.kind==='home'?'stay':t.kind==='login'?'block':'native';
  let current;try{current=new URL(currentHref);}catch(_){return 'native';}
  const c=classify(current.pathname);
  if(c.kind!==t.kind)return 'native';
@@ -133,10 +134,24 @@ function postRoute(){const title=(webTitle||String(document.title||'').replace(/
 function intercept(url){const decision=decide(location.href,url,role);
  if(decision==='native'){try{post('navigate',{url:new URL(url,location.href).href});}catch(_){}return true;}
  return decision==='block';}
+// Instagram's router can render the next page in place around a history change that is cancelled here. The route
+// content (main, its first child, header and first article) is compared with the state at the user's last touch (or at
+// the cancel); if it changed, a popstate for the unchanged location makes Instagram's router render this page again.
+let touchSignature=null,touchAt=-1e9;
+function routeSignature(){const main=document.querySelector('main');return main?[main,main.firstElementChild,main.querySelector('header'),main.querySelector('article')]:[null];}
+function sameSignature(a,b){return a.length===b.length&&a.every((node,i)=>node===b[i]);}
+function restoreAfterCancel(){
+ const baseline=touchSignature&&now()-touchAt<2000?touchSignature:routeSignature();const state=history.state;
+ const frame=f=>typeof requestAnimationFrame==='function'?requestAnimationFrame(f):setTimeout(f,16);
+ frame(()=>frame(()=>{if(sameSignature(baseline,routeSignature()))return;let event;
+  try{event=new PopStateEvent('popstate',{state});}catch(_){try{event=new Event('popstate');}catch(_){return;}}
+  try{window.dispatchEvent(event);}catch(_){}}));}
 for(const name of ['pushState','replaceState']){const original=history[name];history[name]=function(...args){
- if(args[2]!=null&&intercept(args[2]))return;const result=original.apply(this,args);afterRouteChange();return result;};}
+ if(args[2]!=null&&intercept(args[2])){restoreAfterCancel();return;}const result=original.apply(this,args);afterRouteChange();return result;};}
 window.addEventListener('popstate',afterRouteChange);
-document.addEventListener('click',event=>{
+for(const type of ['pointerdown','touchstart'])window.addEventListener(type,()=>{touchSignature=routeSignature();touchAt=now();},{capture:true,passive:true});
+// Links are decided in the window's capturing phase, before any Instagram handler (React listens on its root) can route.
+window.addEventListener('click',event=>{
  if(event.defaultPrevented||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
  const link=event.target&&event.target.closest?event.target.closest('a[href]'):null;if(!link)return;
  const href=link.getAttribute('href');if(!href||href.startsWith('#')||/^javascript:/i.test(href))return;
@@ -179,7 +194,7 @@ function checkReady(){
  const state=probe(kind);
  if(readiness(kind,state))readyFrames++;else readyFrames=0;
  // Login content reports kind "login" whatever the route, so native hides page chrome over it.
- if(readyFrames>=READY_STABLE_FRAMES||(kind==='search'&&readyFrames>0)){readySent=true;postTheme();post('ready',{kind:state.loginForm?'login':kind});
+ if(readyFrames>=READY_STABLE_FRAMES||(kind==='search'&&readyFrames>0)){readySent=true;postTheme();post('ready',{kind:state.loginForm&&kind!=='settings'?'login':kind});
   // Stylesheets can restyle the page after first paint without DOM mutations; re-sample the surface.
   for(const delay of [300,1000,2500])setTimeout(postTheme,delay);return;}
  if(now()-started<GIVE_UP_MS)queueFrame();
