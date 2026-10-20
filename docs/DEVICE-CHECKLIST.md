@@ -143,3 +143,44 @@ external links open in Safari View Controller instead of showing the "External l
 - [ ] Notifications tab while signed in keeps its "Notifications" header. Known risk outside this workstream: FeedFilter reports state `login` for every `/accounts/…` route, which native treats as login content.
 - [ ] Logged in, the Stories tray never turns the Home tab into a login page (e.g. after a long time in the background).
 - [ ] "Log in with Facebook" on the login page shows a short explanation instead of opening Facebook.
+
+## Phase 2C — Tabs
+
+Simulator-verified (logged out): tab bar avatar (24 pt, ring when selected), cached avatar after relaunch with an expired URL, avatar cache removed by Sign out, Notifications red dot drawing, Profile header layout and action sheet, Content filters sheet, Search caught-up view, logged-out profile skin (square grid, Reels tab and app prompts hidden). Everything below needs a signed-in device.
+
+### Tab bar
+- [ ] Unselected tabs show outline glyphs, the selected one filled (Home, Notifications) or bold (Search); Profile shows your avatar in a 24 pt circle, with a thin ring and a small gap when selected; before the avatar is known it shows the person glyph.
+- [ ] Relaunch in Airplane Mode: the Profile tab still shows your avatar immediately (disk cache).
+- [ ] Menu → Sign out → Sign out: the Profile tab returns to the person glyph; relaunch keeps the glyph until you sign in again.
+- [ ] When Instagram has unread activity, a small red dot appears under the Notifications heart within ~30 s (or on the next tab change); it clears when you open Notifications. Note whether the dot ever shows; if never, Instagram's m-web header exposes no indicator (DOM-NOTES, Unread activity).
+- [ ] Tab change gives a selection tick; re-tapping a tab: scroll to top, then pop to root, then (Home, Notifications, Profile) reload behind the skeleton.
+
+### Search
+- [ ] The search field is a 36 pt rounded grey field with a magnifier and a grey "Search" placeholder; typing is 16 pt and the page does not zoom on focus. Only one magnifier.
+- [ ] Focusing the field slides in "Cancel" at the right; Cancel clears the text, hides the keyboard, hides itself, and the caught-up view returns. Only one Cancel is visible.
+- [ ] The caught-up view (ring check, "You're all caught up", grey text) shows only while idle; it fades out on focus or typing.
+- [ ] Results: 44 pt round avatars, bold username, grey full name below, verified badge kept. Dragging the results hides the keyboard but keeps the query.
+- [ ] Tapping a result pushes that profile with a back chevron (no in-place swap); the first tap works even with the keyboard up.
+- [ ] No Explore media grid anywhere on the Search tab.
+
+### Notifications
+- [ ] Header reads "Notifications"; no web header under it.
+- [ ] Rows: 44 pt round avatar, bold username, grey time, trailing 44 pt post thumbnail or a 32 pt rounded Follow (blue) / Following (grey) button, vertically centred.
+- [ ] Pull to refresh holds and settles like Home.
+
+### Profile (own)
+- [ ] Header: your username in bold on the left with a small down chevron, "+" (New post) and the menu on the right; no web header under it.
+- [ ] Chevron: opens Instagram's account switcher if Instagram's page has one; otherwise nothing happens (no error).
+- [ ] "+" shows "Creating posts isn't available in this app."
+- [ ] Menu → action sheet: Settings and activity (pushes Instagram's settings; note which page `/accounts/edit/` shows and whether `/accounts/settings/` would be the better hub), Content filters (opens the sheet), Sign out (asks to confirm, then every tab returns to login).
+- [ ] Profile header: 90 pt avatar, counts with bold numbers, bio, Edit profile / Share profile as two equal 32 pt rounded grey buttons.
+- [ ] Posts / Tagged strip with Instagram's icons, a line under the selected one; no Reels tab.
+- [ ] Grid: three columns of square tiles with 1 pt gaps, edge to edge.
+- [ ] Pushed profiles (from Search, a post, a comment) get the same skin, with Follow (blue) / Following / Message buttons.
+
+### Prompts and dialogs
+- [ ] No "Open app" / "Use the app" / "Get the app" banners, no "See full profile in the app" dialog and no "Get the full experience" overlay on any page; the page scrolls normally.
+- [ ] Real dialogs still appear and work: unfollow confirmation, post options menu, login challenge / two-factor code, "Save your login info?".
+
+### Content filters sheet
+- [ ] Opens from the Profile menu and from Instagram's settings menu entry; dark inset groups with outline icons; Reload Home, Import following.json, Remove imported list, Sign in and Sign out (with confirmation) all still work.

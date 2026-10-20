@@ -14,6 +14,7 @@ final class RootTabBarController: UIViewController {
     private(set) var navigations: [TabItem: PageNavigationController] = [:]
     private(set) var selectedTab: TabItem = .home
     private var cancellables = Set<AnyCancellable>()
+    private var unreadTimer: Timer?
     /// Fires once when Home (or the login page) is ready to reveal behind the splash.
     var onLaunchReady: (() -> Void)?
 
@@ -54,7 +55,16 @@ final class RootTabBarController: UIViewController {
         if let url = DebugLaunchOptions.openURL {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.environment.router.open(url, from: nil) }
         }
+        presentDebugSurface()
         #endif
+        unreadTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshUnread() }
+        }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        refreshUnread()
     }
 
     override func viewDidLayoutSubviews() {
@@ -104,6 +114,19 @@ final class RootTabBarController: UIViewController {
         }
         tabBar.select(tab)
         setNeedsStatusBarAppearanceUpdate()
+        refreshUnread()
+    }
+
+    /// Instagram's unread-activity dot on the Notifications tab, read from the Home page's (hidden)
+    /// web header through `window.__instagramTabs.unread()` (docs/DOM-NOTES.md, Notifications).
+    /// Viewing Notifications clears it; no dot when the page exposes no indicator.
+    private func refreshUnread() {
+        if selectedTab == .activity { tabBar.setBadge(false, on: .activity); return }
+        guard let home = homePage, home.isViewLoaded else { return }
+        home.webView.evaluateJavaScript("window.__instagramTabs?window.__instagramTabs.unread():false") { [weak self] result, _ in
+            guard let self, self.selectedTab != .activity else { return }
+            self.tabBar.setBadge(result as? Bool == true, on: .activity)
+        }
     }
 
     /// Tapping the selected tab: scroll to top; at the top, pop to root; at the root's top,
@@ -120,7 +143,13 @@ final class RootTabBarController: UIViewController {
     // MARK: Session changes
 
     private func makeNavigation(_ tab: TabItem) -> PageNavigationController {
-        let root = environment.router.makePage(tab.rootURL(account: environment.account), placement: .tabRoot(tab))
+        let url = tab.rootURL(account: environment.account)
+        let root: WebPageViewController
+        switch tab {
+        case .search: root = SearchPageViewController(environment: environment, url: url, placement: .tabRoot(.search))
+        case .profile: root = ProfilePageViewController(environment: environment, url: url, placement: .tabRoot(.profile))
+        case .home, .activity: root = environment.router.makePage(url, placement: .tabRoot(tab))
+        }
         if let home = root as? HomePageViewController {
             home.onLaunchReady = { [weak self] in self?.launchReady() }
         }
@@ -148,6 +177,7 @@ final class RootTabBarController: UIViewController {
         }
         navigations = [:]
         environment.filterStatus.reset()
+        tabBar.setBadge(false, on: .activity)
         show(.home)
     }
 
@@ -155,4 +185,29 @@ final class RootTabBarController: UIViewController {
         select(.home, popToRoot: true)
         homePage?.reload()
     }
+
+    #if DEBUG
+    /// DEBUG-only access to surfaces agents cannot tap to, for simulator screenshots. `SHELL_PRESENT`:
+    /// `filters` (Content filters sheet), `profile-menu` (Profile action sheet), `unread` (the
+    /// Notifications dot), `search-idle` (the Search caught-up state), `signout` (Sign out without its
+    /// confirmation, to check that the avatar cache is cleared).
+    private func presentDebugSurface() {
+        let surface = ProcessInfo.processInfo.environment["SHELL_PRESENT"]
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            guard let self else { return }
+            switch surface {
+            case "filters": self.environment.router.presentSettings()
+            case "profile-menu":
+                self.show(.profile)
+                (self.navigations[.profile]?.viewControllers.first as? ProfilePageViewController)?.showMenu()
+            case "unread": self.tabBar.setBadge(true, on: .activity)
+            case "search-idle":
+                self.show(.search)
+                (self.navigations[.search]?.viewControllers.first as? SearchPageViewController)?.debugShowIdle(top: 52)
+            case "signout": self.environment.signOut { [weak self] in self?.resetTabs() }
+            default: break
+            }
+        }
+    }
+    #endif
 }

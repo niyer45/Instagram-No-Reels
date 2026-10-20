@@ -75,3 +75,180 @@ html[data-native-chrome="hidden"] body {
   font: 600 14px/1.3 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   padding: 8px 12px;
 }
+
+/* === Search === */
+/* Instagram's search field as the native one: 36 px rounded 10 px grey field, magnifier, 16 px text
+   (16 px also stops WebKit zooming on focus), and a Cancel that slides in on focus or text.
+   Elements are marked by Bridge.js (Tabs); docs/DOM-NOTES.md "Search, Notifications and Profile". */
+:root {
+  --native-field: rgb(239, 239, 239);
+  --native-secondary-text: rgb(115, 115, 115);
+  --native-secondary-button: rgb(239, 239, 239);
+  --native-primary-button: rgb(var(--ig-primary-button, 74, 93, 249));
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --native-field: rgb(37, 41, 46);
+    --native-secondary-text: rgb(168, 168, 168);
+    --native-secondary-button: rgb(37, 41, 46);
+  }
+}
+[data-native-search-row] {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: nowrap !important;
+}
+[data-native-search-field] {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+  padding: 0 8px 0 34px !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  background: var(--native-field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e8e8e' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M19 10.5A8.5 8.5 0 1 1 10.5 2a8.5 8.5 0 0 1 8.5 8.5Z'/%3E%3Cpath d='M16.511 16.511 22 22'/%3E%3C/svg%3E") no-repeat 11px center / 16px 16px !important;
+}
+/* Instagram's own magnifier inside the field (ours is the background above); the clear button stays. */
+[data-native-search-field] svg[aria-label="Search"] { display: none !important; }
+[data-native-search-input] {
+  font: 400 16px/20px -apple-system, BlinkMacSystemFont, system-ui, sans-serif !important;
+  height: 36px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  outline: none !important;
+  background: transparent !important;
+  color: inherit !important;
+  -webkit-appearance: none;
+  appearance: none;
+}
+[data-native-search-input]::placeholder { color: rgb(142, 142, 142) !important; opacity: 1 !important; }
+[data-native-search-cancel] {
+  flex: 0 0 auto;
+  max-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: 400 16px/36px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  white-space: nowrap;
+  transition: max-width 0.2s ease, margin-left 0.2s ease, opacity 0.2s ease;
+}
+html[data-native-search-active="yes"] [data-native-search-cancel] {
+  max-width: 80px;
+  margin-left: 12px;
+  opacity: 1;
+  pointer-events: auto;
+}
+/* Result rows: 44 px avatars (zoomed by Bridge.js), bold username, grey full name; badges untouched. */
+[data-native-search-avatar] img { border-radius: 50% !important; }
+[data-native-search-username] {
+  font: 600 14px/18px -apple-system, BlinkMacSystemFont, system-ui, sans-serif !important;
+  color: inherit !important;
+}
+[data-native-search-secondary] {
+  font: 400 14px/18px -apple-system, BlinkMacSystemFont, system-ui, sans-serif !important;
+  color: var(--native-secondary-text) !important;
+}
+
+/* === Notifications === */
+/* Activity rows: 44 px avatar, bold username, grey time, 44 px trailing thumbnail or Follow button. */
+[data-native-activity-row] {
+  min-height: 60px;
+  box-sizing: border-box;
+  align-items: center;
+  font: 400 14px/18px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+[data-native-activity-avatar] img { border-radius: 50% !important; }
+[data-native-activity-user] { font-weight: 600 !important; color: inherit !important; }
+[data-native-activity-row] time { color: var(--native-secondary-text) !important; font-weight: 400 !important; }
+[data-native-activity-thumb] {
+  flex: 0 0 44px !important;
+  width: 44px !important;
+  height: 44px !important;
+  overflow: hidden !important;
+  margin-left: 12px !important;
+}
+[data-native-activity-thumb] img {
+  width: 44px !important;
+  height: 44px !important;
+  object-fit: cover !important;
+  border-radius: 4px !important;
+}
+/* Follow / Following / Message buttons (activity rows and profiles): native 32 px rounded 8 px. */
+[data-native-follow-button],
+[data-native-profile-button] {
+  height: 32px !important;
+  min-height: 32px !important;
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 16px !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  font: 600 14px/18px -apple-system, BlinkMacSystemFont, system-ui, sans-serif !important;
+  text-decoration: none !important;
+  white-space: nowrap;
+}
+[data-native-follow-button="primary"],
+[data-native-profile-button="primary"] { background: var(--native-primary-button) !important; color: #fff !important; }
+[data-native-follow-button="secondary"],
+[data-native-profile-button="secondary"] { background: var(--native-secondary-button) !important; color: inherit !important; }
+[data-native-follow-button] > *,
+[data-native-profile-button] > * { background: transparent !important; color: inherit !important; }
+
+/* === Profile === */
+/* Every profile page (own tab and pushed), by page kind: 90 px avatar (zoomed by Bridge.js), counts,
+   bio, equal-width 32 px buttons, Posts/Tagged strip with Instagram's icons (Reels tab hidden),
+   and a 3-column grid of square tiles with 1 px gaps. */
+[data-native-profile-avatar] { flex-shrink: 0 !important; }
+[data-native-profile-avatar] img { border-radius: 50% !important; }
+html[data-native-page="profile"] [data-native-profile-header] h1,
+html[data-native-page="profile"] [data-native-profile-header] h2 {
+  font: 600 16px/20px -apple-system, BlinkMacSystemFont, system-ui, sans-serif !important;
+}
+[data-native-profile-count] { font: 400 14px/18px -apple-system, BlinkMacSystemFont, system-ui, sans-serif !important; }
+[data-native-profile-count] span[title],
+[data-native-profile-count] span > span { font-weight: 600 !important; }
+html[data-native-page="profile"] [data-native-profile-button] { flex: 1 1 0 !important; min-width: 0 !important; }
+[data-native-profile-tabs] {
+  display: flex !important;
+  align-items: stretch !important;
+  height: 44px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+[data-native-profile-tab] {
+  flex: 1 1 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 44px !important;
+  margin: 0 !important;
+  border-bottom: 1px solid transparent !important;
+}
+[data-native-profile-tab="selected"] { border-bottom-color: currentColor !important; }
+[data-native-profile-tab] svg { width: 24px !important; height: 24px !important; }
+[data-native-grid] { padding: 0 !important; margin-left: 0 !important; margin-right: 0 !important; gap: 0 !important; }
+[data-native-grid-row] {
+  display: flex !important;
+  gap: 1px !important;
+  margin: 0 0 1px !important;
+  padding: 0 !important;
+}
+[data-native-grid-cell] { flex: 1 1 0 !important; min-width: 0 !important; margin: 0 !important; padding: 0 !important; }
+[data-native-grid-tile] { border-radius: 0 !important; }
+[data-native-grid-ratio] { padding-bottom: 100% !important; height: 0 !important; }
+[data-native-grid-tile] img { object-fit: cover !important; border-radius: 0 !important; }
+/* A suppressed app-install dialog may have locked page scrolling. */
+html[data-native-app-dialog] body { overflow: auto !important; }

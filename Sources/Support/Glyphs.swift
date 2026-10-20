@@ -5,6 +5,7 @@ import UIKit
 enum Glyph: CaseIterable {
     case home, homeSelected, search, searchSelected, heart, heartSelected
     case messenger, person, personSelected, back, menu, compose, close
+    case newPost, chevronDown
 
     private enum Paint { case stroke(CGFloat), fill(evenOdd: Bool) }
 
@@ -39,6 +40,12 @@ enum Glyph: CaseIterable {
                     ("M16.848 3.924l3.228 3.229", .stroke(2))]
         case .close:
             return [("M4 4 20 20M20 4 4 20", .stroke(2))]
+        case .newPost:
+            // Instagram's "New post": a rounded square with a plus.
+            return [("M2 12v3.45c0 2.849.698 4.005 1.606 4.944.94.909 2.098 1.608 4.946 1.608h6.896c2.848 0 4.006-.7 4.946-1.608C21.302 19.455 22 18.3 22 15.45V8.552c0-2.849-.698-4.006-1.606-4.945C19.454 2.7 18.296 2 15.448 2H8.552c-2.848 0-4.006.699-4.946 1.607C2.698 4.547 2 5.703 2 8.552Z", .stroke(2)),
+                    ("M6.545 12.001h10.91M12.003 6.545v10.91", .stroke(2))]
+        case .chevronDown:
+            return [("M5 9l7 7 7-7", .stroke(2.5))]
         }
     }
 

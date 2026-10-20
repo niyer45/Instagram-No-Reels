@@ -3,6 +3,9 @@ import Combine
 
 /// The signed-in account as observed from Instagram's own page: the username (for the
 /// Profile tab route) and avatar (for its icon). Never touches credentials or cookies.
+///
+/// The avatar image is cached on disk so the Profile tab shows it at launch, before any page
+/// reports it and after its signed CDN URL has expired; `clear()` (Sign out) removes it.
 @MainActor
 final class AccountStore: ObservableObject {
     /// What the shell currently believes about the web session.
@@ -18,10 +21,15 @@ final class AccountStore: ObservableObject {
     private var avatarTask: Task<Void, Never>?
     private let defaults: UserDefaults
     private let imageSession = URLSession(configuration: .ephemeral)
+    private let avatarFile: URL?
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, cacheDirectory: URL? = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first) {
         self.defaults = defaults
+        avatarFile = cacheDirectory?.appendingPathComponent("account-avatar.v1")
         username = defaults.string(forKey: Self.usernameKey).flatMap(FollowingImport.username)
+        if username != nil, let file = avatarFile, let data = try? Data(contentsOf: file), let image = UIImage(data: data) {
+            avatar = image
+        }
         if let raw = defaults.string(forKey: Self.avatarKey), let url = URL(string: raw), BridgeMessage.isAvatarHost(url) {
             loadAvatar(url)
         }
@@ -56,6 +64,7 @@ final class AccountStore: ObservableObject {
         session = .signedOut
         defaults.removeObject(forKey: Self.usernameKey)
         defaults.removeObject(forKey: Self.avatarKey)
+        if let file = avatarFile { try? FileManager.default.removeItem(at: file) }
     }
 
     private func loadAvatar(_ url: URL) {
@@ -67,6 +76,7 @@ final class AccountStore: ObservableObject {
                   let image = UIImage(data: data), !Task.isCancelled else { return }
             guard let self, self.avatarURL == url else { return }
             self.avatar = image
+            if let file = self.avatarFile { try? data.write(to: file, options: [.atomic]) }
         }
     }
 }

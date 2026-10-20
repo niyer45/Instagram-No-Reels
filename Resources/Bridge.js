@@ -325,11 +325,247 @@ function scanTray(){
   if(paths.length&&viewBox&&key!==lastWordmark){lastWordmark=key;post('wordmark',{viewBox,paths});}}
 }
 
+// --- Tabs ---
+// Search, Notifications and Profile (Phase 2C). Marks Instagram's DOM with data-native-* attributes that
+// NativeSkin.css styles (sections Search / Notifications / Profile), adds the native-style Search Cancel
+// control, hides app-install prompts, and gives native window.__instagramTabs (switchAccount, unread,
+// cancelSearch, hasSearchField). Structural selectors only; each one and its fallback is in docs/DOM-NOTES.md.
+const TAB_SEARCH='input[placeholder*="Search" i],input[aria-label*="Search" i],input[type="search"]';
+const TAB_APP_TEXT=/see (the )?full (profile|post|photo|video|reel)s? in the app|use the app to see more|get the full experience|(open|continue|view) (this )?in (the )?(instagram )?app|(use|get|download) the (instagram )?app/i;
+const TAB_APP_CONTROL=/^(open instagram|open( in)? (the )?app|use the app|get the app|download( the)? app|switch to the app)$/i;
+const TAB_PROFILE_BUTTON=/^(edit profile|share profile|follow|follow back|following|requested|message|contact|email|call|view archive|ad tools|professional dashboard|subscribe)$/i;
+const TAB_FOLLOW_PRIMARY=/^(follow|follow back)$/i;
+const TAB_COUNT=/^[\d.,]+\s*[kmb]?\s+(posts?|followers?|following)$/i;
+const TAB_TOP_BAR_SEED=/^(settings|options|new post|new|create|discover people|threads|switch accounts?|down chevron icon|chevron)$/i;
+function tabSet(node,name,value=''){if(node&&node.getAttribute&&node.getAttribute(name)!==value)node.setAttribute(name,value);}
+function tabUnset(node,name){if(node&&node.hasAttribute&&node.hasAttribute(name))node.removeAttribute(name);}
+function tabText(node){return String(node&&node.textContent||'').replace(/\s+/g,' ').trim();}
+function tabRect(node){return node&&node.getBoundingClientRect?node.getBoundingClientRect():{top:0,left:0,width:0,height:0,bottom:0};}
+function tabPosition(node){return typeof getComputedStyle==='function'?getComputedStyle(node).position:'';}
+/** The profile handle a link opens (`/alice/` -> alice), or null. */
+function tabHandle(link){const href=link&&link.getAttribute&&link.getAttribute('href');if(!href)return null;
+ try{const u=new URL(href,'https://www.instagram.com');if(!HOSTS.includes(u.hostname))return null;const parts=u.pathname.split('/').filter(Boolean);const r=classify(u.pathname);return r.kind==='profile'&&parts.length===1?r.identity:null;}catch(_){return null;}}
+/** Scales an avatar block to `target` px with CSS zoom (keeps Instagram's nested fixed-size wrappers and story ring in proportion). */
+function tabZoom(wrapper,img,target){
+ let base=Number(wrapper.getAttribute('data-native-zoom-base'));
+ if(!(base>0)){const w=tabRect(img).width;if(!(w>0))return;base=Math.round(w*10)/10;wrapper.setAttribute('data-native-zoom-base',String(base));}
+ if(Math.abs(target-base)<1)return;const zoom=(target/base).toFixed(4);
+ if(wrapper.style&&wrapper.style.zoom!==zoom)wrapper.style.zoom=zoom;}
+/** The outermost ancestor of an image (≤ 4 levels, below `stop`) no larger than 1.4× it: the avatar block with its ring. */
+function tabAvatarBlock(img,stop){const size=tabRect(img).width;let block=null,node=img.parentElement;
+ for(let depth=0;node&&depth<4&&node!==stop;depth++,node=node.parentElement){const r=tabRect(node);if(size>0&&r.width<=size*1.4&&r.height<=size*1.4)block=node;else break;}
+ return block;}
+function tabPageKind(){const kind=classify(location.pathname).kind;const root=document.documentElement;if(root&&root.getAttribute('data-native-page')!==kind)root.setAttribute('data-native-page',kind);return kind;}
+
+// Search: native field skin, Cancel (appears on focus or text; clears and blurs), result rows.
+let tabSearchInput=null;
+function tabSearchActive(){const input=tabSearchInput;
+ const active=!!input&&input.isConnected!==false&&(document.activeElement===input||!!String(input.value||'').trim());
+ const root=document.documentElement;
+ if(active)tabSet(root,'data-native-search-active','yes');else tabUnset(root,'data-native-search-active');
+ return active;}
+function tabSetValue(input,value){
+ // React tracks the instance's value; the prototype setter plus an input event updates its state.
+ const proto=Object.getPrototypeOf(input);const descriptor=proto&&Object.getOwnPropertyDescriptor(proto,'value');
+ if(descriptor&&descriptor.set)descriptor.set.call(input,value);else input.value=value;
+ try{input.dispatchEvent(new Event('input',{bubbles:true}));}catch(_){}}
+function tabCancelSearch(event){
+ if(event){event.preventDefault();event.stopPropagation();}
+ const input=tabSearchInput;
+ if(input){if(String(input.value||''))tabSetValue(input,'');if(input.blur)input.blur();}
+ const own=document.querySelector('[data-native-hidden="search-cancel"]');if(own&&own.click)own.click();
+ tabSearchActive();}
+function tabScanSearch(){
+ const input=document.querySelector(TAB_SEARCH);tabSearchInput=input||null;
+ if(!input){tabSearchActive();return;}
+ tabSet(input,'data-native-search-input');
+ // The rounded field: the outermost ancestor (≤ 5 levels) 28–52 px tall, narrower than the viewport, holding only this input.
+ const width=window.innerWidth||0;let field=null,node=input.parentElement;
+ for(let depth=0;node&&depth<5&&node!==document.body;depth++,node=node.parentElement){
+  if(node.querySelectorAll('input,textarea').length!==1)break;
+  const r=tabRect(node);if(r.height>=28&&r.height<=52&&r.width<=width-16)field=node;
+ }
+ let cancel=null;
+ if(field){
+  tabSet(field,'data-native-search-field');
+  const row=field.parentElement;
+  if(row&&row!==document.body&&!row.querySelector('main,article')){
+   tabSet(row,'data-native-search-row');
+   for(const child of Array.from(row.children||[]))if(child.hasAttribute&&child.hasAttribute('data-native-search-cancel'))cancel=child;
+   if(!cancel){cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel';cancel.setAttribute('data-native-search-cancel','');
+    cancel.addEventListener('click',tabCancelSearch);row.insertBefore(cancel,field.nextSibling);}
+  }
+ }
+ // Instagram's own Cancel near the top is replaced by ours (ours clicks it, so its state resets too).
+ if(cancel)for(const control of document.querySelectorAll('button,[role="button"]')){
+  if(control===cancel||!/^cancel$/i.test(tabText(control)))continue;
+  if(control.getAttribute('data-native-hidden')!=='search-cancel'&&tabRect(control).top>160)continue;
+  tabSet(control,'data-native-hidden','search-cancel');
+ }
+ // Result rows: profile links with a picture; the text equal to the handle is the username, the next text the full name.
+ for(const link of document.querySelectorAll('a[href]')){
+  const handle=tabHandle(link);const img=handle&&link.querySelector('img');if(!img||link.contains(input)||link.closest('[data-native-hidden]'))continue;
+  tabSet(link,'data-native-search-result');
+  const avatar=tabAvatarBlock(img,link);if(avatar){tabSet(avatar,'data-native-search-avatar');tabZoom(avatar,img,44);}
+  let named=false;
+  for(const text of link.querySelectorAll('span,div')){
+   if(text.querySelector('span,div,img'))continue;const value=tabText(text);if(!value)continue;
+   if(!named&&value.toLowerCase()===handle){tabSet(text,'data-native-search-username');named=true;}
+   else if(named){tabSet(text,'data-native-search-secondary');break;}
+  }
+ }
+ tabSearchActive();
+}
+if(role==='page'){
+ for(const type of ['focusin','focusout','input'])document.addEventListener(type,()=>{if(tabSearchInput)setTimeout(tabSearchActive,0);},true);
+ // Dragging the results dismisses the keyboard, like native Search (the query and Cancel stay).
+ let touchY=null;
+ document.addEventListener('touchstart',event=>{touchY=event.touches&&event.touches[0]?event.touches[0].clientY:null;},{passive:true,capture:true});
+ document.addEventListener('touchmove',event=>{const input=tabSearchInput;
+  if(touchY==null||!input||document.activeElement!==input||!event.touches||!event.touches[0])return;
+  if(Math.abs(event.touches[0].clientY-touchY)>10&&!(event.target&&event.target.closest&&event.target.closest('[data-native-search-row]'))){touchY=null;if(input.blur)input.blur();}
+ },{passive:true,capture:true});
+}
+
+// Notifications: activity rows (avatar, username, time, trailing thumbnail or Follow button).
+function tabScanActivity(){
+ const main=document.querySelector('main')||document.body;if(!main)return;const width=window.innerWidth||0;
+ for(const link of main.querySelectorAll('a[href]')){
+  if(link.hasAttribute('data-native-activity-avatar'))continue;
+  const img=link.querySelector('img');if(!img||!tabHandle(link)||link.closest('[data-native-hidden]'))continue;
+  // The row: the nearest full-width ancestor 40–150 px tall.
+  let row=null,node=link.parentElement;
+  for(let depth=0;node&&depth<7&&node!==main;depth++,node=node.parentElement){
+   if(node.querySelector('article'))break;const r=tabRect(node);
+   if(r.width>=width*0.85&&r.height>=40&&r.height<=150){row=node;break;}
+  }
+  if(!row)continue;
+  tabSet(row,'data-native-activity-row');tabSet(link,'data-native-activity-avatar');tabZoom(link,img,44);
+  for(const other of row.querySelectorAll('a[href]')){if(other===link)continue;
+   if(/\/(p|reel)\//.test(other.getAttribute('href')||'')&&other.querySelector('img'))tabSet(other,'data-native-activity-thumb');
+   else if(tabHandle(other)&&!other.querySelector('img'))tabSet(other,'data-native-activity-user');}
+  for(const button of row.querySelectorAll('button,[role="button"]')){const text=tabText(button);
+   if(TAB_PROFILE_BUTTON.test(text)&&!(button.parentElement&&button.parentElement.closest('[data-native-follow-button]')))tabSet(button,'data-native-follow-button',TAB_FOLLOW_PRIMARY.test(text)?'primary':'secondary');}
+ }
+}
+/** Instagram's unread-activity indicator on its notifications link (hidden web header): a label or a red dot. */
+function tabUnread(){
+ for(const link of document.querySelectorAll('a[href*="/accounts/activity"],a[href^="/notifications"],a[href^="https://www.instagram.com/notifications"]')){
+  const labels=[link,...link.querySelectorAll('[aria-label]')].map(n=>n.getAttribute('aria-label')||'').join(' ')+' '+tabText(link);
+  if(/\b(unread|new notifications?|\d+\s+notifications?)\b/i.test(labels))return true;
+  if(typeof getComputedStyle==='function')for(const node of Array.from(link.querySelectorAll('div,span')).slice(0,40)){
+   const rgb=opaqueRGB(getComputedStyle(node).backgroundColor);if(rgb&&rgb[0]>=200&&rgb[1]<=90&&rgb[2]<=110)return true;}
+ }
+ return false;
+}
+
+// Profile (own and other profiles alike, by page kind): header, buttons, counts, tab strip without Reels, grid.
+let tabSwitcher=null;
+function tabScanProfile(){
+ let header=null;
+ for(const candidate of document.querySelectorAll('header'))if(candidate.querySelector('img[alt*="profile picture" i]')&&candidate.querySelector('h1,h2')){header=candidate;break;}
+ if(header){
+  tabSet(header,'data-native-profile-header');
+  const img=header.querySelector('img[alt*="profile picture" i]');const avatar=tabAvatarBlock(img,header);
+  if(avatar){tabSet(avatar,'data-native-profile-avatar');tabZoom(avatar,img,90);}
+  const scope=header.parentElement||header;
+  for(const control of scope.querySelectorAll('button,a,[role="button"]')){const text=tabText(control);
+   if(text.length>30||!TAB_PROFILE_BUTTON.test(text)||control.closest('[role="dialog"],[role="tablist"]'))continue;
+   if(control.parentElement&&control.parentElement.closest('[data-native-profile-button]'))continue;
+   tabSet(control,'data-native-profile-button',TAB_FOLLOW_PRIMARY.test(text)?'primary':'secondary');}
+  for(const node of header.querySelectorAll('a,li,span')){
+   if(!TAB_COUNT.test(tabText(node)))continue;
+   if(Array.from(node.children||[]).some(child=>TAB_COUNT.test(tabText(child))))continue;
+   tabSet(node,'data-native-profile-count');}
+ }
+ for(const list of document.querySelectorAll('[role="tablist"]')){
+  const tabs=Array.from(list.querySelectorAll('a,[role="tab"]'));if(tabs.length<2||tabs.length>6)continue;
+  tabSet(list,'data-native-profile-tabs');
+  for(const tab of tabs){
+   const reels=!!tab.querySelector('svg[aria-label="Reels"]')||/\/reels\/?(\?|$)/.test(tab.getAttribute('href')||'')||/^reels$/i.test(tab.getAttribute('aria-label')||tabText(tab));
+   const slot=tab.parentElement&&tab.parentElement!==list&&tab.parentElement.children.length===1?tab.parentElement:tab;
+   if(reels)tabSet(slot,'data-native-hidden','reels-tab');else{tabSet(slot,'data-native-profile-tab',tab.getAttribute('aria-selected')==='true'?'selected':'');}
+  }
+ }
+ for(const tile of document.querySelectorAll('a[href]')){
+  if(tile.hasAttribute('data-native-grid-tile'))continue;
+  const href=tile.getAttribute('href')||'';if(!/\/(p|reel)\/|applink\.instagram\.com/.test(href)||!tile.querySelector('img'))continue;
+  if(tile.closest('header,[role="dialog"],[data-native-hidden]'))continue;
+  const cell=tile.parentElement,row=cell&&cell.parentElement;if(!row)continue;
+  const cells=Array.from(row.children||[]).filter(child=>child.querySelector&&child.querySelector('a[href] img'));if(cells.length<2||cells.length>4)continue;
+  tabSet(tile,'data-native-grid-tile');tabSet(cell,'data-native-grid-cell');tabSet(row,'data-native-grid-row');tabSet(row.parentElement,'data-native-grid');
+  // The aspect box: a padding-based ratio element inside the tile (made square by the skin).
+  for(const box of tile.querySelectorAll('div')){const css=typeof getComputedStyle==='function'?getComputedStyle(box):null;
+   if(css&&/%$|[1-9]/.test(css.paddingBottom||'')&&parseFloat(css.height)===0){tabSet(box,'data-native-grid-ratio');break;}
+   if(/padding-bottom:\s*[\d.]+%/.test(box.getAttribute('style')||'')){tabSet(box,'data-native-grid-ratio');break;}}
+ }
+}
+/** Own-profile web top bar (settings, New post, username switcher): hidden like other web headers; remembers the switcher. */
+function tabScanProfileTopBar(){
+ if(!layout.hideChrome)return;const width=window.innerWidth||0;
+ for(const seed of document.querySelectorAll('svg[aria-label]')){
+  if(!TAB_TOP_BAR_SEED.test(seed.getAttribute('aria-label')||''))continue;
+  if(seed.closest('[data-native-profile-header],[role="dialog"],main header'))continue;
+  let best=null,node=seed.parentElement;
+  for(let depth=0;node&&depth<8&&node!==document.body;depth++,node=node.parentElement){
+   if(node.querySelector('main,article,input,[role="tablist"],img[alt*="profile picture" i],[data-native-profile-header]'))break;
+   const r=tabRect(node);if(r.top<=2&&r.width>=width*0.9&&r.height>=30&&r.height<=90)best=node;
+  }
+  if(best){tabSet(best,'data-native-hidden','header');break;}
+ }
+ const bar=document.querySelector('[data-native-hidden="header"]');tabSwitcher=null;
+ if(bar)for(const control of bar.querySelectorAll('button,a,[role="button"]')){
+  if(control.querySelector('svg[aria-label*="chevron" i],svg[aria-label*="switch account" i]')||/switch account/i.test(control.getAttribute('aria-label')||'')){tabSwitcher=control;break;}}
+}
+
+// App-install prompts: the logged-out "See full profile in the app" dialog and the sign-up footer.
+// Dialogs with inputs, forms or long text are never touched (login challenges, confirmations).
+function tabIsAppPrompt(dialog){
+ if(dialog.querySelector('input,textarea,select,form,[contenteditable]'))return false;
+ const text=tabText(dialog);if(text.length>400||!TAB_APP_TEXT.test(text))return false;
+ if(dialog.querySelector('a[href*="applink.instagram.com"],a[href*="apps.apple.com"],a[href^="itms"]'))return true;
+ return Array.from(dialog.querySelectorAll('a,button,[role="button"],[role="link"]')).some(control=>TAB_APP_CONTROL.test(tabText(control)));
+}
+function tabScanPrompts(){
+ for(const dialog of document.querySelectorAll('[role="dialog"]')){
+  if(dialog.closest('[data-native-hidden]')||!tabIsAppPrompt(dialog))continue;
+  // The dialog's overlay layer: the outermost fixed or tabindex=-1 ancestor that is not page content.
+  let overlay=dialog,node=dialog.parentElement;
+  for(let depth=0;node&&depth<6&&node!==document.body;depth++,node=node.parentElement){
+   if(node.querySelector('main,article,[role="tablist"],header'))break;
+   if(tabPosition(node)==='fixed'||node.getAttribute('tabindex')==='-1')overlay=node;
+  }
+  tabSet(overlay,'data-native-hidden','app-dialog');tabSet(document.documentElement,'data-native-app-dialog','hidden');
+ }
+ for(const link of document.querySelectorAll('a[href^="/accounts/signup"],a[href^="https://www.instagram.com/accounts/signup"]')){
+  if(!/^sign up( for instagram)?$/i.test(tabText(link))||link.closest('[data-native-hidden],[role="dialog"]'))continue;
+  let node=link.parentElement;
+  for(let depth=0;node&&depth<8&&node!==document.body;depth++,node=node.parentElement){
+   if(node.querySelector('main,article,input,img,[role="tablist"],header'))break;
+   const position=tabPosition(node);
+   if(['fixed','sticky','absolute'].includes(position)&&/get the full experience/i.test(tabText(node))){tabSet(node,'data-native-hidden','signup-banner');break;}
+  }
+ }
+}
+function scanTabs(){
+ if(role!=='page')return;
+ try{const kind=tabPageKind();tabScanPrompts();
+  if(kind==='search')tabScanSearch();else if(kind==='activity')tabScanActivity();else if(kind==='profile'){tabScanProfile();tabScanProfileTopBar();}
+ }catch(_){}
+}
+if(role==='page')window.__instagramTabs=Object.freeze({
+ switchAccount(){const control=tabSwitcher&&tabSwitcher.isConnected!==false?tabSwitcher:null;if(!control||!control.click)return false;control.click();return true;},
+ unread(){try{return tabUnread();}catch(_){return false;}},
+ cancelSearch(){tabCancelSearch();return true;},
+ hasSearchField(){return !!document.querySelector(TAB_SEARCH);}
+});
+// --- end Tabs ---
+
 let chromeQueued=false;
 function onMutation(){
  if(role==='tray'){scanTray();return;}
  queueFrame();
- if(!chromeQueued){chromeQueued=true;const run=()=>{chromeQueued=false;applyLayout();scanChrome();requestTheme();postRoute();};
+ if(!chromeQueued){chromeQueued=true;const run=()=>{chromeQueued=false;applyLayout();scanChrome();scanTabs();requestTheme();postRoute();};
   if(typeof requestAnimationFrame==='function')requestAnimationFrame(run);else setTimeout(run,16);}
 }
 new MutationObserver(onMutation).observe(document,{childList:true,subtree:true});
