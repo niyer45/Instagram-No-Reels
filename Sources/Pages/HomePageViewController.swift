@@ -11,7 +11,8 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
     private var trayHeight = StoriesTrayHost.defaultHeight
     private var slotTop: CGFloat?
     private var offsetObservation: NSKeyValueObservation?
-    private weak var viewer: StoryViewerController?
+    /// The presented story viewer (`StoryViewerController` inside the shared full-screen modal container).
+    private weak var viewer: ModalContainerController?
     private var trayWait: Timer?
     private var launchReported = false
     /// Fires once when the feed and its tray (or the login page) are ready to be revealed.
@@ -251,18 +252,21 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
     func trayStoryViewer(open: Bool) {
         if open {
             guard viewer == nil else { return }
-            let controller = StoryViewerController(webView: tray.webView)
-            controller.onCloseRequest = { [weak self, weak controller] in
+            let content = StoryViewerController(webView: tray.webView)
+            let modal = ModalContainerController(content: content)
+            content.onCloseRequest = { [weak self, weak modal] in
                 guard let self else { return }
                 self.tray.webView.evaluateJavaScript("window.__instagramTray&&window.__instagramTray.closeViewer()", completionHandler: nil)
-                // If Instagram's viewer did not close (no close control, no history), reset the tray.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self, weak controller] in
-                    guard let self, let controller, self.viewer === controller else { return }
-                    self.tray.load()
+                // If Instagram's viewer did not close (no close control, no history), dismiss and reset the tray.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self, weak modal] in
+                    guard let self, let modal, self.viewer === modal else { return }
+                    self.closeViewer { [weak self] in self?.tray.load() }
                 }
             }
-            viewer = controller
-            present(controller, animated: true)
+            // The container's downward swipe closes Instagram's viewer; the page then reports it closed.
+            modal.dismissalHandler = { [weak content] _ in content?.requestClose() }
+            viewer = modal
+            present(modal, animated: true)
         } else {
             closeViewer(completion: nil)
             // The feed re-scans once the viewer closes (story views can change the page).
