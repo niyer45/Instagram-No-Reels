@@ -146,7 +146,7 @@ external links open in Safari View Controller instead of showing the "External l
 
 ## Phase 2C — Tabs
 
-Simulator-verified (logged out): tab bar avatar (24 pt, ring when selected), cached avatar after relaunch with an expired URL, avatar cache removed by Sign out, Notifications red dot drawing, Profile header layout and action sheet, Content filters sheet, Search caught-up view, logged-out profile skin (square grid, Reels tab and app prompts hidden). Everything below needs a signed-in device.
+Simulator-verified (logged out): tab bar avatar (24 pt, ring when selected), cached avatar after relaunch with an expired URL, avatar cache removed by Sign out, Notifications red dot drawing, Profile header layout and action sheet, Content filters sheet, Search caught-up view, logged-out profile skin (3:4 portrait grid, Reels tab and app prompts hidden). Everything below needs a signed-in device.
 
 ### Tab bar
 - [ ] Unselected tabs show outline glyphs, the selected one filled (Home, Notifications) or bold (Search); Profile shows your avatar in a 24 pt circle, with a thin ring and a small gap when selected; before the avatar is known it shows the person glyph.
@@ -175,7 +175,7 @@ Simulator-verified (logged out): tab bar avatar (24 pt, ring when selected), cac
 - [ ] Menu → action sheet: Settings and activity (pushes Instagram's settings; note which page `/accounts/edit/` shows and whether `/accounts/settings/` would be the better hub), Content filters (opens the sheet), Sign out (asks to confirm, then every tab returns to login).
 - [ ] Profile header: 90 pt avatar, counts with bold numbers, bio, Edit profile / Share profile as two equal 32 pt rounded grey buttons.
 - [ ] Posts / Tagged strip with Instagram's icons, a line under the selected one; no Reels tab.
-- [ ] Grid: three columns of square tiles with 1 pt gaps, edge to edge.
+- [ ] Grid: three columns of 3:4 portrait tiles with 1 pt gaps, edge to edge.
 - [ ] Pushed profiles (from Search, a post, a comment) get the same skin, with Follow (blue) / Following / Message buttons.
 
 ### Prompts and dialogs

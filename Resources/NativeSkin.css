@@ -304,7 +304,7 @@ html[data-native-search-active="yes"] [data-native-search-cancel] {
 /* === Profile === */
 /* Every profile page (own tab and pushed), by page kind: 90 px avatar (zoomed by Bridge.js), counts,
    bio, equal-width 32 px buttons, Posts/Tagged strip with Instagram's icons (Reels tab hidden),
-   and a 3-column grid of square tiles with 1 px gaps. */
+   and a 3-column grid of 3:4 portrait tiles with 1 px gaps, like current native Instagram. */
 [data-native-profile-avatar] { flex-shrink: 0 !important; }
 [data-native-profile-avatar] img { border-radius: 50% !important; }
 html[data-native-page="profile"] [data-native-profile-header] h1,
@@ -342,7 +342,7 @@ html[data-native-page="profile"] [data-native-profile-button] { flex: 1 1 0 !imp
 }
 [data-native-grid-cell] { flex: 1 1 0 !important; min-width: 0 !important; margin: 0 !important; padding: 0 !important; }
 [data-native-grid-tile] { border-radius: 0 !important; }
-[data-native-grid-ratio] { padding-bottom: 100% !important; height: 0 !important; }
+[data-native-grid-ratio] { padding-bottom: 133.333% !important; height: 0 !important; }
 [data-native-grid-tile] img { object-fit: cover !important; border-radius: 0 !important; }
 /* A suppressed app-install dialog may have locked page scrolling. */
 html[data-native-app-dialog] body { overflow: auto !important; }

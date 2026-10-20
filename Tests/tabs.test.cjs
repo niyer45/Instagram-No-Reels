@@ -201,7 +201,7 @@ test('profile header: 90 pt avatar with its ring, native buttons and counts',()=
  assert.deepEqual(p.document.querySelectorAll('[data-native-profile-count]').map(n=>n.tagName),['LI','A']);
 });
 
-test('profile tab strip hides the Reels tab and the grid becomes square tiles in rows',()=>{
+test('profile tab strip hides the Reels tab and the grid becomes 3:4 portrait tiles in rows',()=>{
  const p=profilePage();
  const list=p.document.querySelector('[role="tablist"]');assert.equal(list.getAttribute('data-native-profile-tabs'),'');
  assert.deepEqual(list.children.map(slot=>slot.getAttribute('data-native-hidden')),[null,'reels-tab',null]);
@@ -211,6 +211,8 @@ test('profile tab strip hides the Reels tab and the grid becomes square tiles in
  assert.equal(p.document.querySelectorAll('[data-native-grid-cell]').length,6);
  assert.equal(p.document.querySelectorAll('[data-native-grid-ratio]').length,6);
  assert.equal(p.document.querySelectorAll('[data-native-grid]').length,1);
+ const css=fs.readFileSync(path.join(__dirname,'../Resources/NativeSkin.css'),'utf8');
+ assert.match(css,/\[data-native-grid-ratio\] \{ padding-bottom: 133\.333% !important; height: 0 !important; \}/);
 });
 
 test('the logged-out "See full profile in the app" dialog and sign-up overlay are hidden; real dialogs are not',()=>{
