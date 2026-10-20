@@ -1,0 +1,137 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const {classify,decide,readiness,official,opaqueRGB,avatarURL}=require('../Resources/Bridge.js');
+const fixtures=JSON.parse(fs.readFileSync(path.join(__dirname,'route-fixtures.json'),'utf8'));
+const source=fs.readFileSync(path.join(__dirname,'../Resources/Bridge.js'),'utf8');
+
+test('route classification matches the shared native fixture table',()=>{
+ for(const [p,kind,identity] of fixtures.classify)assert.deepEqual(classify(p),{kind,identity},p);
+});
+test('navigate decisions match the shared native fixture table',()=>{
+ for(const [current,target,role,result] of fixtures.decide)assert.equal(decide(current,target,role),result,current+' -> '+target+' ('+role+')');
+});
+test('relative, hash and malformed targets resolve against the current page',()=>{
+ assert.equal(decide('https://www.instagram.com/alice/','/bob/'),'native');
+ assert.equal(decide('https://www.instagram.com/alice/','#top'),'stay');
+ assert.equal(decide('https://www.instagram.com/alice/','http://[bad'),'pass');
+ assert.equal(decide('https://www.instagram.com/alice/','javascript:void(0)'),'pass');
+ assert.equal(decide('https://www.instagram.com/alice/','https://www.instagram.com:8443/bob/'),'pass');
+});
+test('readiness waits for kind-specific content and falls back once settled',()=>{
+ const base={complete:true,elapsed:100,loading:false,mainMedia:false,loginForm:false,approvedPosts:0,caughtUp:false,articles:0,profileHeader:false,mainContent:false,searchStable:false};
+ assert.equal(readiness('home',base),false);
+ assert.equal(readiness('home',{...base,approvedPosts:1}),true);
+ assert.equal(readiness('home',{...base,caughtUp:true}),true);
+ assert.equal(readiness('home',{...base,elapsed:5000}),false);
+ assert.equal(readiness('home',{...base,elapsed:8000}),true);
+ assert.equal(readiness('home',{...base,elapsed:8000,complete:false}),false);
+ assert.equal(readiness('profile',{...base,profileHeader:true}),true);
+ assert.equal(readiness('profile',{...base,profileHeader:true,loading:true}),false);
+ assert.equal(readiness('post',{...base,articles:1}),true);
+ assert.equal(readiness('search',{...base,searchStable:true}),true);
+ assert.equal(readiness('inbox',{...base,mainContent:true}),true);
+ assert.equal(readiness('inbox',{...base,mainContent:true,loading:true}),false);
+ assert.equal(readiness('inbox',{...base,elapsed:4000}),true);
+ for(const kind of ['home','search','profile','inbox'])assert.equal(readiness(kind,{...base,complete:false,loginForm:true}),true);
+});
+test('theme colours accept opaque values only and avatars accept Instagram CDN URLs only',()=>{
+ assert.deepEqual(opaqueRGB('rgb(12, 16, 20)'),[12,16,20]);
+ assert.deepEqual(opaqueRGB('rgba(0, 0, 0, 1)'),[0,0,0]);
+ assert.equal(opaqueRGB('rgba(0, 0, 0, 0)'),null);assert.equal(opaqueRGB('transparent'),null);
+ assert.equal(avatarURL('https://scontent-lhr8-1.cdninstagram.com/v/t51/a.jpg?x=1'),'https://scontent-lhr8-1.cdninstagram.com/v/t51/a.jpg?x=1');
+ assert.ok(avatarURL('https://instagram.fxyz1-1.fna.fbcdn.net/a.jpg'));
+ for(const bad of ['http://scontent.cdninstagram.com/a.jpg','https://evilcdninstagram.com/a.jpg','https://cdninstagram.com.evil.example/a.jpg','data:image/png;base64,AA'])assert.equal(avatarURL(bad),null,bad);
+ assert.equal(official('https://www.instagram.com/x'),true);assert.equal(official('https://instagram.com.evil.example/'),false);
+});
+
+function page({path='/',role='page',boot={}}={}){
+ const posted=[],listeners={},frames=[];
+ const attrs=new Map(),styles=new Map();
+ const root={getAttribute:k=>attrs.has(k)?attrs.get(k):null,setAttribute:(k,v)=>attrs.set(k,v),style:{setProperty:(k,v)=>styles.set(k,v)},appendChild(){}};
+ const document={documentElement:root,readyState:'loading',title:'Instagram',body:null,
+  querySelector:()=>null,querySelectorAll:()=>[],createElement:()=>({}),addEventListener:(k,f)=>{listeners['doc:'+k]=f;}};
+ const location={pathname:path.split('?')[0],search:path.includes('?')?path.slice(path.indexOf('?')):'',get href(){return 'https://www.instagram.com'+this.pathname+this.search;}};
+ const history={pushState(a,b,u){const x=new URL(u,location.href);location.pathname=x.pathname;location.search=x.search;},replaceState(a,b,u){const x=new URL(u,location.href);location.pathname=x.pathname;location.search=x.search;}};
+ const window={innerWidth:400,innerHeight:800,__instagramBoot:{role,...boot},webkit:{messageHandlers:{instagram:{postMessage:m=>posted.push(m)}}},addEventListener:(k,f)=>{listeners['win:'+k]=f;}};
+ window.top=window;
+ const context={window,document,location,history,URL,WeakSet,Element:class{},setTimeout:()=>0,requestAnimationFrame:f=>frames.push(f),
+  performance:{now:()=>0},getComputedStyle:()=>({display:'block',visibility:'visible',opacity:'1',position:'static',backgroundColor:'rgb(12, 16, 20)'}),
+  MutationObserver:class{constructor(f){listeners.mutation=f;}observe(){}}};
+ vm.runInNewContext(source,context);
+ return {posted,listeners,frames,attrs,styles,context,window,document,location,history,
+  click(href){let prevented=0;const link={href:new URL(href,location.href).href,getAttribute:()=>href};
+   listeners['doc:click']({target:{closest:s=>s==='a[href]'?link:null},preventDefault(){prevented++;},stopImmediatePropagation(){}});return prevented;},
+  flush(n=1){for(let i=0;i<n;i++){const run=frames.splice(0);for(const f of run)f();}},
+  of:type=>posted.filter(m=>m.type===type).map(m=>JSON.parse(JSON.stringify(m)))};
+}
+
+test('every message uses one handler with a type, and native layout reaches CSS variables',()=>{
+ const p=page({path:'/alice/',boot:{headerHeight:44,hideChrome:true}});
+ assert.deepEqual(p.of('route')[0],{type:'route',path:'/alice/',search:'',title:''});
+ assert.equal(p.styles.get('--native-header-height'),'44px');assert.equal(p.attrs.get('data-native-chrome'),'hidden');
+ p.window.__instagram.layout({headerHeight:0,storiesHeight:96,hideChrome:false});
+ assert.equal(p.styles.get('--native-header-height'),'0px');assert.equal(p.styles.get('--native-stories-height'),'96px');assert.equal(p.attrs.get('data-native-chrome'),'web');
+ p.window.__instagram.layout({headerHeight:Infinity});assert.equal(p.styles.get('--native-header-height'),'0px');
+ assert.ok(p.posted.every(m=>typeof m.type==='string'));
+});
+test('Home sends Search, Profile and Messages to native without navigating its live page',()=>{
+ const p=page({path:'/?variant=following'});
+ for(const target of ['/explore/','/alice/','/direct/inbox/'])assert.equal(p.click(target),1);
+ assert.equal(p.location.pathname,'/');
+ assert.deepEqual(p.of('navigate').map(m=>m.url),['https://www.instagram.com/explore/','https://www.instagram.com/alice/','https://www.instagram.com/direct/inbox/']);
+});
+test('Home from another page is native; same-page variant links stay in the web view',()=>{
+ for(const from of ['/explore/','/alice/','/direct/inbox/']){const p=page({path:from});assert.equal(p.click('/'),1);assert.deepEqual(p.of('navigate').map(m=>m.url),['https://www.instagram.com/']);}
+ const home=page({path:'/?variant=following'});assert.equal(home.click('/?variant=past_posts'),0);assert.equal(home.of('navigate').length,0);
+});
+test('programmatic history changes to another page are performed natively before history changes',()=>{
+ const p=page({path:'/'});p.history.pushState({},'','/explore/');
+ assert.equal(p.location.pathname,'/');assert.deepEqual(p.of('navigate').map(m=>m.url),['https://www.instagram.com/explore/']);
+ p.history.replaceState({},'','/reels/');assert.equal(p.location.pathname,'/');assert.equal(p.of('navigate').length,1);
+ p.history.pushState({},'','/?variant=home');assert.equal(p.location.search,'?variant=home');
+ assert.deepEqual(p.of('route').at(-1),{type:'route',path:'/',search:'?variant=home',title:''});
+});
+test('opening a post from a profile leaves the profile document untouched',()=>{
+ const p=page({path:'/alice/'});assert.equal(p.click('/p/ABC/'),1);assert.equal(p.location.pathname,'/alice/');
+ assert.equal(p.click('/alice/tagged/'),0);assert.equal(p.click('/alice/reels/'),1);assert.equal(p.of('navigate').length,1);
+});
+test('ready is reported once per document after the kind probe holds for several frames',()=>{
+ const p=page({path:'/alice/'});let header=null;
+ p.document.querySelector=s=>s==='main'?{querySelectorAll:()=>[],querySelector:()=>null,textContent:''}:s.startsWith('main header')?header:null;
+ p.flush(3);assert.equal(p.of('ready').length,0);
+ header={};p.flush(5);assert.equal(p.of('ready').length,0);p.flush(2);
+ assert.deepEqual(p.of('ready'),[{type:'ready',kind:'profile'}]);assert.deepEqual(p.of('theme').at(-1),{type:'theme',backgroundRGB:[12,16,20]});
+ p.listeners.mutation();p.flush(10);assert.equal(p.of('ready').length,1);
+});
+test('Search is ready only after a complete document and a stable original search control',()=>{
+ const p=page({path:'/explore/'});let control={getBoundingClientRect:()=>({top:8,left:16,width:320,height:44})};
+ p.document.querySelector=s=>s.startsWith('input[placeholder')?control:null;
+ p.flush(30);assert.equal(p.of('ready').length,0);
+ p.document.readyState='complete';p.flush(15);assert.equal(p.of('ready').length,0);
+ control={getBoundingClientRect:()=>({top:8,left:16,width:320,height:44})};
+ p.flush(15);assert.equal(p.of('ready').length,0);p.flush(10);assert.deepEqual(p.of('ready'),[{type:'ready',kind:'search'}]);
+});
+test('policy and refresh reach registered listeners; malformed policy JSON is ignored',()=>{
+ const p=page();const seen=[];let refreshed=0;
+ p.window.__instagram.on('policy',x=>seen.push(x.revision));p.window.__instagram.on('refresh',()=>refreshed++);
+ p.window.__instagram.policy('{"handles":[],"revision":2}');p.window.__instagram.policy('{bad');p.window.__instagram.policy({handles:['a'],revision:3});p.window.__instagram.refresh();
+ assert.deepEqual(seen,[2,3]);assert.equal(refreshed,1);assert.equal(p.window.__instagram.currentPolicy.revision,3);
+});
+test('the web tab bar is hidden and reports the signed-in avatar; the web header is hidden and titles the page',()=>{
+ const p=page({path:'/direct/t/1/',boot:{headerHeight:44,hideChrome:true}});
+ const tabAttrs=new Map(),headAttrs=new Map();
+ const avatar={currentSrc:'https://scontent.cdninstagram.com/a.jpg'};
+ const links=[{getAttribute:()=>'/'},{getAttribute:()=>'/explore/'},{getAttribute:()=>'/me/',querySelector:()=>avatar}].map(l=>({querySelector:()=>null,...l}));
+ const tabBar={getAttribute:k=>tabAttrs.get(k)??null,setAttribute:(k,v)=>tabAttrs.set(k,v),querySelector:()=>null,querySelectorAll:s=>s==='a[href]'?links:[],getBoundingClientRect:()=>({top:760,height:50,width:400})};
+ const explore={parentElement:tabBar};
+ const heading={textContent:' Friend Name '};
+ const header={getAttribute:k=>headAttrs.get(k)??null,setAttribute:(k,v)=>headAttrs.set(k,v),querySelector:s=>s==='h1,h2,[role="heading"]'?heading:null,getBoundingClientRect:()=>({top:0,width:400,height:44}),parentElement:null};
+ const back={parentElement:header};
+ p.document.querySelectorAll=s=>s.startsWith('a[href="/explore/"]')?[explore]:s.startsWith('svg[aria-label="Instagram"]')?[back]:[];
+ p.listeners.mutation();p.flush(1);
+ assert.equal(tabAttrs.get('data-native-hidden'),'tabbar');assert.equal(headAttrs.get('data-native-hidden'),'header');
+ assert.deepEqual(p.of('avatar'),[{type:'avatar',url:avatar.currentSrc,username:'me'}]);
+ assert.equal(p.of('route').at(-1).title,'Friend Name');
+ p.listeners.mutation();p.flush(1);assert.equal(p.of('avatar').length,1);
+});

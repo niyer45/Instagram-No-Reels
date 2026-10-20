@@ -75,6 +75,9 @@ function classify(f,allowed,metadata,browsing=false){
 }
 if(typeof module!=='undefined'&&module.exports){module.exports={handle,official,profileHandle,code,route,ingest,parse,classify,caughtUp,safeHeaderTitle,shouldContinueScroll,paginationTarget};return;}
 if(window.top!==window||!official(location.href))return;
+// Messages go through Resources/Bridge.js (window.__instagram); the policy arrives in the boot object and later via __instagram.policy().
+const native=window.__instagram||null;let policy=window.__instagramBoot?.policy||null;
+function post(type,payload){try{native?.post(type,payload);}catch(_){}}
 const originalObservers=[];let OriginalIntersectionObserver=null,paginationObserver=null,paginationIntent=false,paginationBridges=0,paginationBatches=0,lastPaginationBatch=null;
 if(typeof window.IntersectionObserver==='function'){
  const Original=window.IntersectionObserver;OriginalIntersectionObserver=Original;
@@ -87,7 +90,7 @@ if(typeof window.IntersectionObserver==='function'){
 }
 let queued=false,lastStatus='',observer;
 let lastScrollY=0;
-const style=document.createElement('style');style.textContent='html[data-instagram-search-idle="yes"] [role="progressbar"],html[data-instagram-search-idle="yes"] [data-visualcompletion="loading-state"],html[data-instagram-search-idle="yes"] [aria-label="Loading..."],html[data-instagram-search-idle="yes"] [aria-label="Loading"]{display:none!important}[data-instagram-search-caught-up]{position:fixed;left:0;right:0;top:var(--instagram-search-content-top,72px);z-index:2;pointer-events:none;text-align:center}[data-instagram-search-caught-up] img{display:block;width:min(100%,400px);height:auto;margin:24px auto 0}#splash-screen{display:none!important;visibility:hidden!important}html{color-scheme:light dark}body{overflow-anchor:none!important}[data-instagram-bottom]{display:flex!important;align-items:center!important;justify-content:space-between!important}[data-instagram-bottom]>[data-instagram-nav-item]{flex:1!important;display:flex!important;align-items:center!important;justify-content:center!important}[data-following-approved="no"]{visibility:hidden!important;pointer-events:none!important}[data-following-approved="no"][data-following-pending="no"]{display:block!important;visibility:hidden!important;height:1px!important;min-height:1px!important;max-height:1px!important;overflow:hidden!important;margin:0!important;padding:0!important;pointer-events:none!important}html[data-following-mode="blocked"] body{visibility:hidden!important}a[href^="/reels"],a[href^="/reel/"],a[href^="/tv/"]{display:none!important}html[data-following-mode="search"] a[href*="/p/"],html[data-following-mode="search"] a[href*="/reel/"],html[data-following-mode="search"] video,html[data-following-mode="search"] article,html[data-following-mode="search"] [data-instagram-search-media]{display:none!important}';
+const style=document.createElement('style');style.textContent='html[data-instagram-search-idle="yes"] [role="progressbar"],html[data-instagram-search-idle="yes"] [data-visualcompletion="loading-state"],html[data-instagram-search-idle="yes"] [aria-label="Loading..."],html[data-instagram-search-idle="yes"] [aria-label="Loading"]{display:none!important}body{overflow-anchor:none!important}[data-following-approved="no"]{visibility:hidden!important;pointer-events:none!important}[data-following-approved="no"][data-following-pending="no"]{display:block!important;visibility:hidden!important;height:1px!important;min-height:1px!important;max-height:1px!important;overflow:hidden!important;margin:0!important;padding:0!important;pointer-events:none!important}html[data-following-mode="blocked"] body{visibility:hidden!important}a[href^="/reels"],a[href^="/reel/"],a[href^="/tv/"]{display:none!important}html[data-following-mode="search"] a[href*="/p/"],html[data-following-mode="search"] a[href*="/reel/"],html[data-following-mode="search"] video,html[data-following-mode="search"] article,html[data-following-mode="search"] [data-instagram-search-media]{display:none!important}';
 function attachStyle(){if(document.documentElement&&!style.parentNode)document.documentElement.appendChild(style);}
 function schedule(){if(!queued){queued=true;queueMicrotask(scan);}}
 function acceptText(text){if(parse(text))schedule();}
@@ -151,29 +154,10 @@ function candidates(){
  return [...found].filter(a=>![...found].some(b=>b!==a&&b.contains(a)));
 }
 const parsedScripts=new WeakMap();
-function publishStoryPosition(){
+let lastSlotTop=null;
+function publishStoriesSlot(){
  const slot=document.querySelector('[data-instagram-stories-slot]');if(!slot)return;
- const header=document.querySelector('header:not(article header),[role="banner"]');
- const r=slot.getBoundingClientRect();const headerBottom=header?Math.max(0,Math.min(120,header.getBoundingClientRect().bottom)):56;
- try{window.webkit.messageHandlers.followingStoriesPosition.postMessage({top:r.top,headerBottom});}catch(_){}
-}
-let searchReadySent=false,searchReadyRunning=false;
-function publishStableSearch(){
- const bridge=window.webkit?.messageHandlers?.followingSearchReady;
- if(!bridge||searchReadySent||searchReadyRunning||route(location.pathname)!=='search')return;
- searchReadyRunning=true;let last=null,key='',frames=0;
- function frame(){
-  if(route(location.pathname)!=='search'){searchReadyRunning=false;return;}
-  const control=document.querySelector('input[placeholder*="Search" i],input[aria-label*="Search" i],input[type="search"],[role="combobox"]');
-  const r=control?.getBoundingClientRect();const css=control?getComputedStyle(control):null;
-  const image=document.querySelector('[data-instagram-search-caught-up] img');
-  const ready=document.readyState==='complete'&&!!r&&r.width>0&&r.height>0&&css.display!=='none'&&css.visibility!=='hidden'&&css.opacity!=='0'&&(!image||image.complete&&image.naturalWidth>0);
-  const next=ready?[r.top,r.left,r.width,r.height].map(Math.round).join(','):'';
-  frames=ready&&control===last&&next===key?frames+1:0;last=control;key=next;
-  if(frames>=24){searchReadySent=true;searchReadyRunning=false;bridge.postMessage({ready:true});return;}
-  requestAnimationFrame(frame);
- }
- requestAnimationFrame(frame);
+ const top=Math.round(slot.getBoundingClientRect().top+(window.scrollY||0));if(top===lastSlotTop)return;lastSlotTop=top;post('storiesSlot',{top});
 }
 let searchEngaged=false;
 function searchInteraction(event){
@@ -183,20 +167,15 @@ function searchInteraction(event){
  if(/^(cancel|back)$/i.test(label)){searchEngaged=false;schedule();return;}
  if(control.matches?.('input,textarea,[role="combobox"]')||/search/i.test(label)&&(control.getBoundingClientRect?.().top??Infinity)<160){searchEngaged=true;renderSearchPlaceholder('search');}
 }
+let lastSearchIdle='';
 function renderSearchPlaceholder(mode){
  if(mode!=='search')searchEngaged=false;
- const root=document.documentElement;let banner=document.querySelector('[data-instagram-search-caught-up]');
+ const root=document.documentElement;
  const input=mode==='search'?document.querySelector('input[placeholder*="Search" i],input[aria-label*="Search" i],input[type="search"],[role="combobox"]'):null;
  const idle=mode==='search'&&location.pathname.replace(/\/$/,'')==='/explore'&&!searchEngaged&&!(input&&document.activeElement===input)&&!(input?.value||'').trim()&&!document.querySelector('[role="dialog"]');
- if(!idle){root.removeAttribute('data-instagram-search-idle');if(banner)banner.remove();return;}
- root.setAttribute('data-instagram-search-idle','yes');
- const source=window.__followingPolicy?.searchCaughtUpImage;if(!source)return;
- if(!banner){banner=document.createElement('section');banner.setAttribute('data-instagram-search-caught-up','');
-  const image=document.createElement('img');image.src=source;image.alt="You're all caught up. You've seen all new posts from the past 2 days.";image.width=400;image.height=280;
-  banner.appendChild(image);(document.body||root).appendChild(banner);
- }
- const bottom=input?.getBoundingClientRect?.().bottom;
- if(banner.style)banner.style.setProperty('--instagram-search-content-top',Math.max(64,Number.isFinite(bottom)?bottom+8:64)+'px');
+ if(idle)root.setAttribute('data-instagram-search-idle','yes');else root.removeAttribute('data-instagram-search-idle');
+ const bottom=input?.getBoundingClientRect?.().bottom;const top=idle?Math.round(Math.max(56,Number.isFinite(bottom)?bottom:56)):0;
+ const key=idle+','+top;if(key!==lastSearchIdle){lastSearchIdle=key;post('searchIdle',{idle,top});}
 }
 function refreshPaginationObservers(){
  if(!paginationIntent||(paginationBatches>=4&&lastPaginationBatch!==records.size)||route(location.pathname)!=='feed'||!OriginalIntersectionObserver)return;
@@ -225,32 +204,12 @@ window.addEventListener('touchstart',event=>{paginationBridges=0;paginationBatch
 window.addEventListener('touchmove',event=>{const y=event.touches?.[0]?.clientY;if(event.isTrusted&&typeof y==='number'&&touchY!==null)continueOnIntent(y<touchY);touchY=y??null;},{passive:true});
 window.addEventListener('wheel',event=>{if(event.isTrusted)continueOnIntent(event.deltaY>0);},{passive:true});
 window.addEventListener('scroll',event=>{
- if(typeof requestAnimationFrame==='function')requestAnimationFrame(publishStoryPosition);else publishStoryPosition();
  const y=window.scrollY||0;if(event.isTrusted)continueOnIntent(y>lastScrollY);lastScrollY=y;
 },{passive:true,capture:true});
 function scan(){queued=false;attachStyle();
- for(const link of document.querySelectorAll('a[href]')){
-  let u;try{u=new URL(link.getAttribute('href'),location.href);}catch(_){continue;}
-  if(!official(u.href)||!/^\/direct(?:\/inbox)?\/?$/.test(u.pathname))continue;
-  let nav=link.parentElement;
-  for(let depth=0;nav&&depth<7;depth++,nav=nav.parentElement){
-   const r=typeof nav.getBoundingClientRect==='function'?nav.getBoundingClientRect():null;
-   const home=[...nav.querySelectorAll('a[href]')].find(a=>{try{return new URL(a.getAttribute('href'),location.href).pathname==='/';}catch(_){return false;}});
-   if(home&&r&&r.top>(window.innerHeight||0)*0.65&&r.height<130){
-    nav.setAttribute('data-instagram-bottom','');
-    for(const child of [...nav.children]){
-     const anchors=child.matches?.('a[href]')?[child]:[...child.querySelectorAll('a[href]')];
-     const enabled=anchors.some(a=>{try{return route(new URL(a.getAttribute('href'),location.href).pathname)!=='blocked';}catch(_){return false;}});
-     if(enabled){child.setAttribute('data-instagram-nav-item','');}else if(anchors.length){child.style.display='none';}
-    }
-    link.setAttribute('data-instagram-messages','');link.style.removeProperty('position');link.style.removeProperty('top');link.style.removeProperty('bottom');link.style.removeProperty('left');link.style.removeProperty('transform');
-    break;
-   }
-  }
- }
-const root=document.documentElement;if(!root)return;const mode=route(location.pathname);if(mode!=='search')for(const node of document.querySelectorAll('[data-instagram-search-media]'))node.removeAttribute('data-instagram-search-media');if(root.getAttribute('data-following-mode')!==mode)root.setAttribute('data-following-mode',mode);renderSearchPlaceholder(mode);publishStableSearch();
+const root=document.documentElement;if(!root)return;const mode=route(location.pathname);if(mode!=='search')for(const node of document.querySelectorAll('[data-instagram-search-media]'))node.removeAttribute('data-instagram-search-media');if(root.getAttribute('data-following-mode')!==mode)root.setAttribute('data-following-mode',mode);renderSearchPlaceholder(mode);
  for(const script of document.querySelectorAll('script[type="application/json"]'))if(script.textContent.length<=LIMIT&&parsedScripts.get(script)!==script.textContent){parsedScripts.set(script,script.textContent);parse(script.textContent);}
- const p=window.__followingPolicy;const allowed=new Set(Array.isArray(p?.handles)?p.handles.map(handle).filter(Boolean):[]);
+ const allowed=new Set(Array.isArray(policy?.handles)?policy.handles.map(handle).filter(Boolean):[]);
  const postContext=mode==='feed'||code(location.href)!==null||profileHandle(location.href)!==null&&mode!=='login';
  const articles=postContext?candidates():[];
  if(mode==='search'){for(const link of document.querySelectorAll('a[href]')){if(!code(link.getAttribute('href'))&&!/\/reels?\//.test(link.getAttribute('href')||''))continue;const tile=link.closest('article')||link.parentElement;if(tile&&!tile.querySelector('input,[role="combobox"]'))tile.setAttribute('data-instagram-search-media','');}}
@@ -262,18 +221,17 @@ let shown=0,hidden=0,missing=false,unknown=false,language=false;
   const main=document.querySelector('main');
   if(main&&!main.querySelector('[data-instagram-caught-up]')){
    const banner=document.createElement('section');banner.setAttribute('data-instagram-caught-up','');banner.setAttribute('role','status');
-   banner.style.cssText='text-align:center;padding:32px 18px;color:inherit';
-   const icon=document.createElement('div');icon.textContent='✓';icon.style.cssText='margin:0 auto 18px;width:70px;height:70px;line-height:70px;border:3px solid #ed467b;border-radius:50%;font-size:38px;color:#ed467b';
-   const title=document.createElement('h2');title.textContent="You're all caught up";
-   const detail=document.createElement('p');detail.textContent="You've seen all new posts from the past 2 days.";detail.style.cssText='color:gray;font-size:16px';
-   const older=document.createElement('button');older.textContent='View older posts';older.style.cssText='border:0;background:none;color:#3897f0;font-size:17px;font-weight:600;padding:10px';older.onclick=()=>{includeOlder=true;banner.remove();scan();};
+   const icon=document.createElement('div');icon.setAttribute('data-part','icon');icon.setAttribute('aria-hidden','true');
+   const title=document.createElement('h2');title.setAttribute('data-part','title');title.textContent="You're all caught up";
+   const detail=document.createElement('p');detail.setAttribute('data-part','detail');detail.textContent="You've seen all new posts from the past 2 days.";
+   const older=document.createElement('button');older.setAttribute('data-part','older');older.textContent='View older posts';older.onclick=()=>{includeOlder=true;banner.remove();scan();};
    banner.appendChild(icon);banner.appendChild(title);banner.appendChild(detail);banner.appendChild(older);main.appendChild(banner);
   }
  }
- if(mode==='feed'&&new URL(location.href).searchParams.get('variant')==='following'&&window.__instagramStoriesHeight>0){
+ if(mode==='feed'&&new URL(location.href).searchParams.get('variant')==='following'&&window.__instagramBoot?.storiesSlot===true){
   const first=articles[0];let slot=document.querySelector('[data-instagram-stories-slot]');
   if(first&&!slot){const main=document.querySelector('main');let branch=first;while(branch.parentElement&&branch.parentElement!==main)branch=branch.parentElement;if(branch.parentElement===main){slot=document.createElement('div');slot.setAttribute('data-instagram-stories-slot','');main.insertBefore(slot,branch);}}
-  if(slot){const height=Math.min(190,window.__instagramStoriesHeight)+'px';if(slot.style.height!==height)slot.style.height=height;publishStoryPosition();}
+  if(slot){const height='var(--native-stories-height,0px)';if(slot.style.height!==height)slot.style.height=height;publishStoriesSlot();}
  }
  const positive=[...records.values()].some(x=>x.following===true);
  const login=mode==='login'||!!document.querySelector('input[type="password"]')||(!articles.length&&!records.size&&!!document.querySelector('main a[href^="/accounts/login"]'));
@@ -283,40 +241,29 @@ let shown=0,hidden=0,missing=false,unknown=false,language=false;
  const recordTrue=recordValues.filter(x=>x.following===true).length,recordFalse=recordValues.filter(x=>x.following===false).length,recordUnknown=recordValues.filter(x=>x.following===null).length;
  const cardWithAuthor=articles.filter(a=>facts(a).authors.length===1).length;
  const followingFeedAvailable=[...document.querySelectorAll('a[href]')].some(a=>{try{const u=new URL(a.getAttribute('href'),location.href);return official(u.href)&&u.pathname==='/'&&u.searchParams.get('variant')==='following';}catch(_){return false;}});
- let backgroundRGB=null;
- if(typeof getComputedStyle==='function'){
-  for(const node of [document.body,root])if(node){const value=getComputedStyle(node).backgroundColor;const m=value.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/);if(m&&(!m[4]||Number(m[4])===1)){backgroundRGB=m.slice(1,4).map(Number);break;}}
- }
- const payload={homeFeed:mode==='feed',backgroundRGB,state,followingFeedAvailable,shown,hidden,reason,recordTrue,recordFalse,recordUnknown,cardWithAuthor,metadataRecords:records.size,haveFollowing:allowed.size>0||positive,postCandidates:articles.length,articleCount:document.querySelectorAll('article').length,headerCount:document.querySelectorAll('article header').length,h2Count:document.querySelectorAll('main h2').length,permalinkCount:document.querySelectorAll('main a[href*="/p/"]').length};
+ const payload={homeFeed:mode==='feed',state,followingFeedAvailable,shown,hidden,reason,recordTrue,recordFalse,recordUnknown,cardWithAuthor,metadataRecords:records.size,haveFollowing:allowed.size>0||positive,postCandidates:articles.length,articleCount:document.querySelectorAll('article').length,headerCount:document.querySelectorAll('article header').length,h2Count:document.querySelectorAll('main h2').length,permalinkCount:document.querySelectorAll('main a[href*="/p/"]').length};
  refreshPaginationObservers();
- const key=JSON.stringify(payload);if(key!==lastStatus){lastStatus=key;try{window.webkit.messageHandlers.followingStatus.postMessage(payload);}catch(_){}}
+ const key=JSON.stringify(payload);if(key!==lastStatus){lastStatus=key;post('status',payload);}
  // Place optional controls inside the original settings menu only.
- for(const menu of document.querySelectorAll('[role="menu"]'))if(/\b(settings|your activity)\b/i.test(menu.textContent||'')&&!menu.querySelector('[data-following-controls]')){const button=document.createElement('button');button.textContent='Following filter settings';button.setAttribute('data-following-controls','yes');button.onclick=()=>{try{window.webkit.messageHandlers.followingControls.postMessage({action:'open'});}catch(_){}};menu.appendChild(button);}
+ for(const menu of document.querySelectorAll('[role="menu"]'))if(/\b(settings|your activity)\b/i.test(menu.textContent||'')&&!menu.querySelector('[data-following-controls]')){const button=document.createElement('button');button.textContent='Following filter settings';button.setAttribute('data-following-controls','yes');button.onclick=()=>post('openControls',{});menu.appendChild(button);}
 }
 
 window.__instagramFilterDiagnostics=function(){
- const cards=candidates().slice(0,3);const allowed=new Set((window.__followingPolicy?.handles||[]).map(handle).filter(Boolean));const values=[...records.values()];
+ const cards=candidates().slice(0,3);const allowed=new Set((policy?.handles||[]).map(handle).filter(Boolean));const values=[...records.values()];
  function profileCount(n){return [...n.querySelectorAll('a[href]')].filter(a=>profileHandle(a.getAttribute('href'))===handle(a.textContent)&&profileHandle(a.getAttribute('href'))!==null).length;}
  function relativePath(a,card){const path=[];let node=a;while(node&&node!==card&&path.length<8){const parent=node.parentElement;if(!parent)break;path.unshift((node.tagName||'node')+':'+Array.prototype.indexOf.call(parent.children,node));node=parent;}return path.join('/');}
  const followingLinks=[...document.querySelectorAll('a[href]')].filter(a=>{try{const u=new URL(a.getAttribute('href'),location.href);return official(u.href)&&u.pathname==='/'&&u.searchParams.get('variant')==='following';}catch(_){return false;}});
  const followingLabels=[...document.querySelectorAll('nav a,nav button,header a,header button')].filter(a=>!a.closest('article')&&(a.textContent||'').trim()==='Following');
- return {paginationBridges,intersectionTargets:originalObservers.flatMap(o=>[...o.originalTargets].map(n=>{const r=n.getBoundingClientRect();return {tag:n.tagName,underMain:!!n.closest('main'),height:r.height,top:r.top,bottom:r.bottom,media:!!n.querySelector('img,video'),empty:!(n.textContent||'').trim(),progress:n.getAttribute('role')==='progressbar'};})).slice(-20),pagingSignals:paginationSignals,documentHeight:document.documentElement.scrollHeight||0,viewportHeight:window.innerHeight||0,windowScrollY:window.scrollY||0,scrollContainers:typeof getComputedStyle==='function'?[...document.querySelectorAll('main,main div')].slice(0,500).filter(n=>n.scrollHeight>n.clientHeight+100&&['auto','scroll'].includes(getComputedStyle(n).overflowY)).slice(0,5).map(n=>({tag:n.tagName,height:n.clientHeight,contentHeight:n.scrollHeight,top:n.scrollTop})):[],loadControls:[...document.querySelectorAll('main a,main button,main [role="button"]')].filter(n=>/^(view older posts|see older posts|load more|load more posts|see more posts)$/i.test((n.textContent||'').trim())).map(n=>({kind:(n.textContent||'').trim().toLowerCase(),disabled:!!n.disabled||n.getAttribute('aria-disabled')==='true'})),olderEnabled:includeOlder,datedRecords:values.filter(x=>x.takenAt).length,olderControls:document.querySelectorAll('[data-instagram-auto-older]').length,defaultFollowing:new URL(location.href).searchParams.get("variant")==="following",centeredMessages:document.querySelectorAll("[data-instagram-messages]").length,followingFeedAvailable:followingLinks.length>0,followingRoute:followingLinks.length?'/?variant=following':null,followingNavigationLabels:followingLabels.length,followingSelectedLabels:followingLabels.filter(a=>a.getAttribute('aria-current')==='page'||a.getAttribute('aria-selected')==='true').length,recordFollowingTrue:values.filter(x=>x.following===true).length,recordFollowingFalse:values.filter(x=>x.following===false).length,recordFollowingUnknown:values.filter(x=>x.following===null).length,matchedRecords:cards.filter(a=>records.has(facts(a).permalink)).length,codeMatches:cards.filter(a=>!!facts(a).permalink).length,attributionCandidates:cards.map(a=>facts(a).authors.length),permalinkPathShapes:[...document.querySelectorAll('main a[href*="/p/"]')].slice(0,8).map(a=>{const segments=new URL(a.getAttribute('href'),location.href).pathname.split('/').filter(Boolean);const index=segments.indexOf('p');const suffix=segments[index+2];return {segmentCount:segments.length,suffixKind:!suffix?'none':['liked_by','comments','c','embed'].includes(suffix)?suffix:'unknown',shape:segments.map((s,i)=>s==='p'?'p':i===0&&segments[1]==='p'?'username':'opaque').join('/')};}),cardsWithSingleAuthor:cards.filter(a=>facts(a).authors.length===1).length,
+ return {paginationBridges,intersectionTargets:originalObservers.flatMap(o=>[...o.originalTargets].map(n=>{const r=n.getBoundingClientRect();return {tag:n.tagName,underMain:!!n.closest('main'),height:r.height,top:r.top,bottom:r.bottom,media:!!n.querySelector('img,video'),empty:!(n.textContent||'').trim(),progress:n.getAttribute('role')==='progressbar'};})).slice(-20),pagingSignals:paginationSignals,documentHeight:document.documentElement.scrollHeight||0,viewportHeight:window.innerHeight||0,windowScrollY:window.scrollY||0,scrollContainers:typeof getComputedStyle==='function'?[...document.querySelectorAll('main,main div')].slice(0,500).filter(n=>n.scrollHeight>n.clientHeight+100&&['auto','scroll'].includes(getComputedStyle(n).overflowY)).slice(0,5).map(n=>({tag:n.tagName,height:n.clientHeight,contentHeight:n.scrollHeight,top:n.scrollTop})):[],loadControls:[...document.querySelectorAll('main a,main button,main [role="button"]')].filter(n=>/^(view older posts|see older posts|load more|load more posts|see more posts)$/i.test((n.textContent||'').trim())).map(n=>({kind:(n.textContent||'').trim().toLowerCase(),disabled:!!n.disabled||n.getAttribute('aria-disabled')==='true'})),olderEnabled:includeOlder,datedRecords:values.filter(x=>x.takenAt).length,olderControls:document.querySelectorAll('[data-instagram-auto-older]').length,defaultFollowing:new URL(location.href).searchParams.get("variant")==="following",followingFeedAvailable:followingLinks.length>0,followingRoute:followingLinks.length?'/?variant=following':null,followingNavigationLabels:followingLabels.length,followingSelectedLabels:followingLabels.filter(a=>a.getAttribute('aria-current')==='page'||a.getAttribute('aria-selected')==='true').length,recordFollowingTrue:values.filter(x=>x.following===true).length,recordFollowingFalse:values.filter(x=>x.following===false).length,recordFollowingUnknown:values.filter(x=>x.following===null).length,matchedRecords:cards.filter(a=>records.has(facts(a).permalink)).length,codeMatches:cards.filter(a=>!!facts(a).permalink).length,attributionCandidates:cards.map(a=>facts(a).authors.length),permalinkPathShapes:[...document.querySelectorAll('main a[href*="/p/"]')].slice(0,8).map(a=>{const segments=new URL(a.getAttribute('href'),location.href).pathname.split('/').filter(Boolean);const index=segments.indexOf('p');const suffix=segments[index+2];return {segmentCount:segments.length,suffixKind:!suffix?'none':['liked_by','comments','c','embed'].includes(suffix)?suffix:'unknown',shape:segments.map((s,i)=>s==='p'?'p':i===0&&segments[1]==='p'?'username':'opaque').join('/')};}),cardsWithSingleAuthor:cards.filter(a=>facts(a).authors.length===1).length,
  cards:cards.map(card=>{const f=facts(card);const m=records.get(f.permalink);const authors=[...new Set(f.authors)];const reason=f.promotional||f.suggested||m?.bad?'blocked-ad':f.reel||m?.reel?'blocked-reel':!authors.length||f.ambiguousIdentity?'unknown-author':m&&!authors.includes(m.author)?'metadata-author-mismatch':m?.following===false?'not-followed':m?.unknownVideo||f.video&&!m?'unknown-video':classify(f,allowed,m)?'approved':'following-unavailable';return {matched:!!m,authorCount:authors.length,metadataFollow:typeof m?.following==='boolean'?m.following:null,reason,mediaType:m?.mediaType===1?'photo':m?.mediaType===2?'video':m?.mediaType===8?'carousel':'unknown',productType:['feed','clips','reels','igtv'].includes(m?.productType)?m.productType:'unknown',children:[...(card.children||[])].slice(0,12).map(child=>({tagName:child.tagName,childCount:(child.children||[]).length,media:!!child.querySelector('img,video'),matchingProfileAnchors:profileCount(child)})),profileAnchorPaths:[...card.querySelectorAll('a[href]')].filter(a=>profileHandle(a.getAttribute('href'))===handle(a.textContent)&&profileHandle(a.getAttribute('href'))!==null).slice(0,5).map(a=>relativePath(a,card))};}),schemas:schemaSamples};
 };
 
 observer=new MutationObserver(schedule);observer.observe(document,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['href','src','aria-label']});
 
 document.addEventListener('input',schedule,true);document.addEventListener('pointerdown',searchInteraction,true);document.addEventListener('focusin',event=>{searchInteraction(event);schedule();},true);document.addEventListener('focusout',schedule,true);
-window.addEventListener('following-policy-change',scan);window.addEventListener('popstate',scan);
-function forwardNativeDestination(value){
- const bridge=window.webkit?.messageHandlers?.followingOpenDestination;
- if(!bridge)return false;
- try{const u=new URL(value,location.href);if(!official(u.href)||route(u.pathname)==='blocked')return false;
-  const home=route(location.pathname)==='feed';
-  if((window.__instagramPinnedSearch&&route(u.pathname)!=='search')||(!window.__instagramPinnedSearch&&u.pathname.replace(/\/$/,'')==='/explore')||(window.__instagramPinnedProfile&&u.pathname!==location.pathname)||(home&&u.pathname!=='/'&&!u.pathname.startsWith('/accounts/login'))||(!home&&u.pathname==='/')){bridge.postMessage({url:u.href});return true;}
- }catch(_){}return false;
-}
-for(const name of ['pushState','replaceState']){const original=history[name];history[name]=function(...args){if(args[2]!=null){try{const u=new URL(args[2],location.href);if(official(u.href)&&route(u.pathname)==='blocked')return;if(forwardNativeDestination(u.href))return;}catch(_){}}const result=original.apply(this,args);scan();return result;};}
-document.addEventListener('click',event=>{searchInteraction(event);const target=event.target instanceof Element?event.target:null;const destination=target?.closest('a[href]');if(destination&&destination.closest?.('[data-instagram-bottom]')&&profileHandle(destination.href)&&window.webkit?.messageHandlers?.followingOpenDestination){window.webkit.messageHandlers.followingOpenDestination.postMessage({url:destination.href,tab:'profile'});event.preventDefault();event.stopImmediatePropagation();return;}if(destination&&forwardNativeDestination(destination.href)){event.preventDefault();event.stopImmediatePropagation();return;}const button=target?target.closest('button,[role="button"]'):null;if(button&&['Reels'].includes(button.getAttribute('aria-label'))){event.preventDefault();event.stopImmediatePropagation();return;}const a=event.target instanceof Element?event.target.closest('a[href]'):null;if(a){const home=new URL(a.href,location.href);if(official(home.href)&&home.pathname==='/'&&(!home.searchParams.has('variant')||home.searchParams.get('variant')==='home')){event.preventDefault();event.stopImmediatePropagation();location.assign('https://www.instagram.com/?variant=following');return;}}if(a&&route(new URL(a.href,location.href).pathname)==='blocked'){event.preventDefault();event.stopImmediatePropagation();}},true);
+native?.on('policy',value=>{policy=value;scan();});native?.on('refresh',scan);window.addEventListener('popstate',scan);
+// Blocked routes never enter history; other page changes are handed to native by Bridge.js.
+for(const name of ['pushState','replaceState']){const original=history[name];history[name]=function(...args){if(args[2]!=null){try{const u=new URL(args[2],location.href);if(official(u.href)&&route(u.pathname)==='blocked')return;}catch(_){}}const result=original.apply(this,args);scan();return result;};}
+document.addEventListener('click',event=>{searchInteraction(event);const target=event.target instanceof Element?event.target:null;const button=target?target.closest('button,[role="button"]'):null;if(button&&['Reels'].includes(button.getAttribute('aria-label'))){event.preventDefault();event.stopImmediatePropagation();return;}const a=target?target.closest('a[href]'):null;if(a){const home=new URL(a.href,location.href);if(official(home.href)&&home.pathname==='/'&&(!home.searchParams.has('variant')||home.searchParams.get('variant')==='home')){event.preventDefault();event.stopImmediatePropagation();location.assign('https://www.instagram.com/?variant=following');return;}}if(a&&route(new URL(a.href,location.href).pathname)==='blocked'){event.preventDefault();event.stopImmediatePropagation();}},true);
 scan();
 })();

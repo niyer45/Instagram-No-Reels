@@ -52,11 +52,12 @@ function fixture({path='/',lang='en',rootPresent=true,mainPresent=true,password=
     querySelectorAll:s=>s==='article'?articles.filter(a=>!a.div):s==='script[type="application/json"]'?jsonScripts:s==='a[href]'?navLinks:[],addEventListener:(k,f)=>events[k]=f
   };
   const location = {protocol:'https:',port:'',hostname:'www.instagram.com',pathname:path,origin:'https://www.instagram.com',href:'https://www.instagram.com'+path};
-  const window = {__followingPolicy:{handles:['alice'],revision:1},webkit:{messageHandlers:{followingStatus:{postMessage:p=>statuses.push(p)}}},addEventListener:(k,f)=>events[k]=f};
+  const bridge={};const posted=[];
+  const window = {__instagramBoot:{policy:{handles:['alice'],revision:1},storiesSlot:true},__instagram:{on:(k,f)=>{(bridge[k]=bridge[k]||[]).push(f);},post:(type,p)=>{posted.push({type,...p});if(type==='status')statuses.push(p);}},addEventListener:(k,f)=>events[k]=f};
   if(fetchImpl)window.fetch=fetchImpl;window.top=window;
   let historyCalls=0,scrollCalls=0,now=0;const timers=[];window.innerHeight=800;window.scrollBy=()=>{scrollCalls++;};const context = {window,document,location,URL,Set,Date:{now:()=>now},setTimeout:fn=>{timers.push(fn);return timers.length;},Element:class {},queueMicrotask,MutationObserver:class {constructor(f){observer=f;}observe(){}},history:{pushState(){historyCalls++;},replaceState(){historyCalls++;}}};
   vm.runInNewContext(source,context);
-  return {document,root,attrs,statuses,events,window,context,historyCalls:()=>historyCalls,scrollCalls:()=>scrollCalls,runTimer:async()=>{now+=1500;const fn=timers.shift();if(fn)fn();await Promise.resolve();},mutate:async()=>{observer();await Promise.resolve();}};
+  return {document,root,attrs,statuses,posted,events,window,context,setPolicy:p=>bridge.policy.forEach(f=>f(p)),refresh:()=>bridge.refresh.forEach(f=>f()),historyCalls:()=>historyCalls,scrollCalls:()=>scrollCalls,runTimer:async()=>{now+=1500;const fn=timers.shift();if(fn)fn();await Promise.resolve();},mutate:async()=>{observer();await Promise.resolve();}};
 }
 function post(author='alice',text='A photo') {
   const attributes = new Map();
@@ -88,18 +89,18 @@ test('unknown attribution, ads and caption spoofs remain individually hidden',()
 test('document-start root bootstrap and policy revocation',async()=>{
  const a=post();const f=fixture({rootPresent:false,articles:[a]});assert.equal(f.statuses.length,0);
  f.document.documentElement=f.root;await f.mutate();assert.equal(a.getAttribute('data-following-approved'),'yes');
- f.window.__followingPolicy={handles:[],revision:2};f.events['following-policy-change']();assert.equal(a.getAttribute('data-following-approved'),'no');assert.equal(f.statuses.at(-1).state,'needsFollowing');
+ f.setPolicy({handles:[],revision:2});assert.equal(a.getAttribute('data-following-approved'),'no');assert.equal(f.statuses.at(-1).state,'needsFollowing');
 });
 test('initial application/json supplies automatic membership without imported list',()=>{
  const a=post();const f=fixture({articles:[a],jsonScripts:[{textContent:JSON.stringify({items:[{code:'ABC',user:{username:'alice',friendship_status:{following:true}}}]})}]});
- f.window.__followingPolicy={handles:[]};f.events['following-policy-change']();
+ f.setPolicy({handles:[]});
  assert.equal(a.getAttribute('data-following-approved'),'yes');assert.equal(f.statuses.at(-1).metadataRecords,1);
 });
 test('fetch wrapper returns original promise and observes only official existing JSON',async()=>{
  const a=post();let calls=0;
  const response={url:'https://www.instagram.com/existing-response',headers:{get:k=>k==='content-type'?'application/json':null},clone:()=>({text:async()=>JSON.stringify({code:'ABC',user:{username:'alice',is_following:true}})})};
  const promise=Promise.resolve(response);
- const f=fixture({articles:[a],fetchImpl:()=>{calls++;return promise;}});f.window.__followingPolicy={handles:[]};f.events['following-policy-change']();
+ const f=fixture({articles:[a],fetchImpl:()=>{calls++;return promise;}});f.setPolicy({handles:[]});
  assert.equal(a.getAttribute('data-following-approved'),'no');assert.equal(f.window.fetch('/existing-response'),promise);
  await Promise.resolve();await Promise.resolve();await Promise.resolve();await Promise.resolve();
  assert.equal(calls,1);assert.equal(a.getAttribute('data-following-approved'),'yes');
@@ -111,19 +112,19 @@ test('headerless heading attribution and modern div post candidates are recogniz
 });
 test('membership-null metadata requests evidence, language hides only posts, inbox articles preserved',()=>{
  const a=post();const f=fixture({articles:[a],jsonScripts:[{textContent:JSON.stringify({code:'ABC',user:{username:'alice'}})}]});
- f.window.__followingPolicy={handles:[]};f.events['following-policy-change']();assert.equal(f.statuses.at(-1).reason,'following-unavailable');
+ f.setPolicy({handles:[]});assert.equal(f.statuses.at(-1).reason,'following-unavailable');
  const b=post();const g=fixture({lang:'fr',articles:[b]});assert.equal(b.getAttribute('data-following-approved'),'no');assert.equal(g.attrs.get('data-following-mode'),'feed');assert.equal(g.statuses.at(-1).reason,'unsupported-language');
  const c=post();const h=fixture({path:'/direct/inbox/',articles:[c]});assert.equal(c.getAttribute('data-following-approved'),null);
 });
 test('fresh follow evidence replaces stale negative evidence and changed JSON scripts reparse',()=>{
  const r=new Map();ingest({code:'ABC',user:{username:'alice',is_following:false}},r);ingest({code:'ABC',user:{username:'alice',is_following:true}},r);assert.equal(r.get('ABC').following,true);
  const script={textContent:JSON.stringify({code:'ABC',user:{username:'alice',is_following:false}})};const a=post();const f=fixture({articles:[a],jsonScripts:[script]});assert.equal(a.getAttribute('data-following-approved'),'no');
- script.textContent=JSON.stringify({code:'ABC',user:{username:'alice',is_following:true}});f.events['following-policy-change']();assert.equal(a.getAttribute('data-following-approved'),'yes');
+ script.textContent=JSON.stringify({code:'ABC',user:{username:'alice',is_following:true}});f.refresh();assert.equal(a.getAttribute('data-following-approved'),'yes');
 });
 test('organic caption label words are not ad disclosures',()=>{
  const a=post('alice','I hate sponsored posts and advertisements. Suggested for you is annoying.');
  const f=fixture({articles:[a]});assert.equal(a.getAttribute('data-following-approved'),'yes');
- a.disclosure='Sponsored';f.events['following-policy-change']();assert.equal(a.getAttribute('data-following-approved'),'no');
+ a.disclosure='Sponsored';f.refresh();assert.equal(a.getAttribute('data-following-approved'),'no');
 });
 test('profile grid tiles remain untouched while feed divs are filtered',()=>{
  const a=post();a.div=true;a.header=false;
@@ -184,7 +185,7 @@ test('nested modern attribution row with avatars and collaborators excludes late
  a.children=[wrapper];a.firstElementChild=wrapper;
  const old=a.querySelectorAll;a.querySelectorAll=function(s){if(s==='a[href]')return [{getAttribute:()=>'/bob/p/ABC/'}];return old.call(this,s);};
  const f=fixture({articles:[a],jsonScripts:[{textContent:JSON.stringify({code:'ABC',user:{username:'bob',is_following:true}})}]});
- f.window.__followingPolicy={handles:[]};f.events['following-policy-change']();assert.equal(a.getAttribute('data-following-approved'),'yes');
+ f.setPolicy({handles:[]});assert.equal(a.getAttribute('data-following-approved'),'yes');
 });
 test('public post identity subroutes map only recognized exact suffixes',()=>{
  for(const suffix of ['liked_by/','comments/','c/123/','embed/'])assert.equal(code('/p/ABC/'+suffix),'ABC');
@@ -194,8 +195,8 @@ test('public post identity subroutes map only recognized exact suffixes',()=>{
 test('subroute identity requires scoped attribution; captions and multiple post IDs cannot approve',()=>{
  const a=post();const prior=a.querySelectorAll;a.querySelectorAll=function(s){if(s==='a[href]')return [{getAttribute:()=>'/alice/p/ABC/liked_by/'}];return prior.call(this,s);};
  const f=fixture({articles:[a],jsonScripts:[{textContent:JSON.stringify({code:'ABC',user:{username:'alice',is_following:true}})}]});assert.equal(a.getAttribute('data-following-approved'),'yes');
- a.header=false;a.text='alice caption';f.events['following-policy-change']();assert.equal(a.getAttribute('data-following-approved'),'no');
- a.header=true;a.querySelectorAll=function(s){if(s==='a[href]')return [{getAttribute:()=>'/p/ABC/'},{getAttribute:()=>'/p/DEF/'}];return prior.call(this,s);};f.events['following-policy-change']();assert.equal(a.getAttribute('data-following-approved'),'no');
+ a.header=false;a.text='alice caption';f.refresh();assert.equal(a.getAttribute('data-following-approved'),'no');
+ a.header=true;a.querySelectorAll=function(s){if(s==='a[href]')return [{getAttribute:()=>'/p/ABC/'},{getAttribute:()=>'/p/DEF/'}];return prior.call(this,s);};f.refresh();assert.equal(a.getAttribute('data-following-approved'),'no');
 });
 test('blocked SPA history destinations are rejected before navigation; other history preserved',()=>{
  const f=fixture();f.context.history.pushState({},'','/reels/');f.context.history.replaceState({},'','/clips/');assert.equal(f.historyCalls(),0);
@@ -225,7 +226,7 @@ test('feed filtering never scrolls the page automatically',async()=>{
  assert.ok(f.root.styleText.includes('overflow-anchor:none!important'));
 });
 test('intrinsically excluded Reels without membership do not report following-unavailable',()=>{
- const a=post();a.reel=true;const f=fixture({articles:[a]});f.window.__followingPolicy={handles:[]};f.events['following-policy-change']();
+ const a=post();a.reel=true;const f=fixture({articles:[a]});f.setPolicy({handles:[]});
  assert.notEqual(f.statuses.at(-1).reason,'following-unavailable');assert.equal(a.getAttribute('data-following-approved'),'no');
 });
 
@@ -312,85 +313,40 @@ test('Search media markers are cleared when navigating to Profile and Home',asyn
 });
 
 
-test('Home sends Search, Profile and Messages to native browsing without navigating its live page',()=>{
- const f=fixture({path:'/'});const opened=[];
- f.window.webkit.messageHandlers.followingOpenDestination={postMessage:x=>opened.push(x.url)};
- for(const path of ['/explore/','/alice/','/direct/inbox/']){
-  let prevented=0;const target=new f.context.Element();target.closest=s=>s==='a[href]'?{href:'https://www.instagram.com'+path}:null;
-  f.events.click({target,preventDefault(){prevented++},stopImmediatePropagation(){}});
-  assert.equal(prevented,1);assert.equal(f.context.location.pathname,'/');
- }
- assert.deepEqual(opened,['https://www.instagram.com/explore/','https://www.instagram.com/alice/','https://www.instagram.com/direct/inbox/']);
+test('Search reports idle to native only while idle and clears it for focus, queries, dialogs and other routes',async()=>{
+ const f=fixture({path:'/explore/'});const input={value:'',getBoundingClientRect:()=>({bottom:56.4})};
+ const original=f.document.querySelector.bind(f.document);let dialog=null;
+ f.document.querySelector=selector=>selector.startsWith('input[placeholder')?input:selector==='[role="dialog"]'?dialog:original(selector);
+ const idle=()=>f.posted.filter(m=>m.type==='searchIdle').at(-1);
+ await f.mutate();assert.deepEqual(idle(),{type:'searchIdle',idle:true,top:56});assert.equal(f.attrs.get('data-instagram-search-idle'),'yes');
+ f.document.activeElement=input;await f.mutate();assert.equal(idle().idle,false);
+ f.document.activeElement=null;await f.mutate();assert.equal(idle().idle,true);
+ input.value='alice';await f.mutate();assert.equal(idle().idle,false);assert.equal(f.attrs.has('data-instagram-search-idle'),false);
+ input.value='';dialog={};await f.mutate();assert.equal(idle().idle,false);dialog=null;await f.mutate();assert.equal(idle().idle,true);
+ const count=f.posted.filter(m=>m.type==='searchIdle').length;await f.mutate();assert.equal(f.posted.filter(m=>m.type==='searchIdle').length,count);
+ input.closest=()=>input;input.matches=()=>true;f.events.focusin({target:input});assert.equal(idle().idle,false);await f.mutate();assert.equal(idle().idle,false);
+ f.context.location.pathname='/alice/';f.context.location.href='https://www.instagram.com/alice/';await f.mutate();assert.equal(idle().idle,false);assert.equal(f.attrs.has('data-instagram-search-idle'),false);
 });
 
-test('Home from browsing requests native restoration without a document navigation',()=>{
- for(const path of ['/explore/','/alice/','/direct/inbox/']){
-  const f=fixture({path});const opened=[];let assigned=false;
-  f.window.webkit.messageHandlers.followingOpenDestination={postMessage:x=>opened.push(x.url)};
-  f.context.location.assign=()=>assigned=true;
-  const target=new f.context.Element();target.closest=s=>s==='a[href]'?{href:'https://www.instagram.com/'}:null;
-  f.events.click({target,preventDefault(){},stopImmediatePropagation(){}});
-  assert.deepEqual(opened,['https://www.instagram.com/']);assert.equal(assigned,false);
- }
+test('filter status and the controls entry travel as typed bridge messages without page colours',async()=>{
+ const f=fixture({articles:[post()]});const status=f.posted.filter(m=>m.type==='status').at(-1);
+ assert.equal(status.state,'filtered');assert.equal(status.shown,1);assert.equal('backgroundRGB' in status,false);
+ let appended=null;const menu={textContent:'Settings',querySelector:()=>null,appendChild:n=>appended=n};
+ const original=f.document.querySelectorAll;f.document.querySelectorAll=s=>s==='[role="menu"]'?[menu]:original(s);
+ f.document.createElement=()=>({setAttribute(){},textContent:''});await f.mutate();
+ assert.equal(appended.textContent,'Following filter settings');appended.onclick();assert.deepEqual(f.posted.at(-1),{type:'openControls'});
 });
 
-test('Home catches programmatic tab routing before changing its history',()=>{
- const f=fixture({path:'/'});const opened=[];
- f.window.webkit.messageHandlers.followingOpenDestination={postMessage:x=>opened.push(x.url)};
- f.context.history.pushState({},'', '/explore/');
- assert.equal(f.historyCalls(),0);assert.deepEqual(opened,['https://www.instagram.com/explore/']);
-});
-
-
-test('Search shows the bundled static image only while idle and removes it for queries and other routes',async()=>{
- const f=fixture({path:'/explore/'});let banner=null,image=null;const input={value:'',getBoundingClientRect:()=>({bottom:56})};
+test('Following feed keeps the stories spacer sized by native CSS and reports its document position',async()=>{
+ const a=post();a.div=true;const f=fixture({path:'/',articles:[a]});
+ f.context.location.search='?variant=following';f.context.location.href='https://www.instagram.com/?variant=following';
+ let slot=null;const main=a.parentElement;
+ main.insertBefore=(node,before)=>{assert.equal(before,a);slot=node;};
+ f.document.createElement=()=>({attrs:new Map(),style:{},setAttribute(k,v){this.attrs.set(k,v);},getBoundingClientRect:()=>({top:44})});
  const original=f.document.querySelector.bind(f.document);
- f.document.querySelector=selector=>selector==='[data-instagram-search-caught-up]'?banner:selector.startsWith('input[placeholder')?input:original(selector);
- f.document.body={appendChild:node=>banner=node};
- f.document.createElement=tag=>tag==='img'?(image={}):{setAttribute(){},appendChild(){},style:{setProperty(){}},remove(){banner=null;}};
- f.window.__followingPolicy.searchCaughtUpImage='data:image/svg+xml;base64,PHN2Zy8+';
- await f.mutate();assert.ok(banner);assert.equal(image.src,f.window.__followingPolicy.searchCaughtUpImage);assert.equal(f.attrs.get('data-instagram-search-idle'),'yes');
- f.document.activeElement=input;await f.mutate();assert.equal(banner,null);
- f.document.activeElement=null;await f.mutate();assert.ok(banner);
- input.value='alice';await f.mutate();assert.equal(banner,null);assert.equal(f.attrs.has('data-instagram-search-idle'),false);
- input.value='';await f.mutate();assert.ok(banner);
- input.closest=()=>input;input.matches=()=>true;f.events.focusin({target:input});assert.equal(banner,null);await f.mutate();assert.equal(banner,null);
- f.context.location.pathname='/alice/';f.context.location.href='https://www.instagram.com/alice/';await f.mutate();assert.equal(banner,null);assert.equal(f.attrs.has('data-instagram-search-idle'),false);
-});
-
-
-test('Profile tab taps request native cache selection even when Profile is already active',()=>{
- for(const path of ['/','/explore/','/alice/']){
-  const f=fixture({path});const opened=[];let prevented=0;
-  f.window.webkit.messageHandlers.followingOpenDestination={postMessage:x=>opened.push(x)};
-  const link={href:'https://www.instagram.com/alice/',closest:s=>s==='[data-instagram-bottom]'?{}:null};
-  const target=new f.context.Element();target.closest=s=>s==='a[href]'?link:null;
-  f.events.click({target,preventDefault(){prevented++},stopImmediatePropagation(){}});
-  assert.equal(opened.length,1);assert.equal(opened[0].tab,'profile');assert.equal(opened[0].url,link.href);assert.equal(prevented,1);
- }
-});
-
-test('Opening a post from the pinned Profile leaves its cached document untouched',()=>{
- const f=fixture({path:'/alice/'});f.window.__instagramPinnedProfile=true;const opened=[];
- f.window.webkit.messageHandlers.followingOpenDestination={postMessage:x=>opened.push(x.url)};
- const link={href:'https://www.instagram.com/p/ABC/',closest:()=>null};
- const target=new f.context.Element();target.closest=s=>s==='a[href]'?link:null;
- f.events.click({target,preventDefault(){},stopImmediatePropagation(){}});
- assert.deepEqual(opened,[link.href]);assert.equal(f.context.location.pathname,'/alice/');assert.equal(f.historyCalls(),0);
-});
-
-
-test('Search reveals only after a complete document and a stable original search control',async()=>{
- const f=fixture({path:'/explore/'});const frames=[];const ready=[];let control={getBoundingClientRect:()=>({top:8,left:16,width:320,height:44})};
- f.context.requestAnimationFrame=fn=>frames.push(fn);f.context.getComputedStyle=()=>({display:'block',visibility:'visible',opacity:'1',backgroundColor:'rgb(12, 16, 20)'});
- f.window.webkit.messageHandlers.followingSearchReady={postMessage:x=>ready.push(x)};
- const original=f.document.querySelector.bind(f.document);
- f.document.querySelector=s=>s.startsWith('input[placeholder')?control:original(s);
- f.document.readyState='loading';await f.mutate();
- for(let i=0;i<30;i++)frames.shift()();assert.equal(ready.length,0);
- f.document.readyState='complete';for(let i=0;i<15;i++)frames.shift()();assert.equal(ready.length,0);
- control={getBoundingClientRect:()=>({top:8,left:16,width:320,height:44})};
- for(let i=0;i<15;i++)frames.shift()();assert.equal(ready.length,0);
- for(let i=0;i<10;i++)frames.shift()();assert.equal(ready.length,1);
- await f.mutate();assert.equal(frames.length,0);assert.equal(ready.length,1);
+ f.document.querySelector=s=>s==='[data-instagram-stories-slot]'?slot:original(s);
+ f.window.scrollY=100;await f.mutate();
+ assert.ok(slot.attrs.has('data-instagram-stories-slot'));assert.equal(slot.style.height,'var(--native-stories-height,0px)');
+ assert.deepEqual(f.posted.filter(m=>m.type==='storiesSlot'),[{type:'storiesSlot',top:144}]);
+ await f.mutate();assert.equal(f.posted.filter(m=>m.type==='storiesSlot').length,1);
 });

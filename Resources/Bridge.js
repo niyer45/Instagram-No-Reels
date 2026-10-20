@@ -1,0 +1,270 @@
+/* Native bridge for the Instagram shell.
+   Reports routes, readiness, theme, the signed-in avatar and Stories tray geometry
+   through one message handler ("instagram") and hands every navigation that changes
+   page to the native Router. Observes the page only; never reads credentials or cookies.
+   Native -> page: window.__instagram.policy(json), .refresh(), .layout(values). */
+(function () {
+'use strict';
+const HOSTS=['instagram.com','www.instagram.com'];
+const BLOCKED=new Set(['reel','reels','tv','clips']);
+const LOGIN_ROOTS=new Set(['challenge','checkpoint','two_factor','consent','oauth']);
+const LOGIN_ACCOUNTS=new Set(['login','emailsignup','signup','password','onetap','logout','suspended','disabled']);
+const OTHER_ROOTS=new Set(['about','legal','privacy','terms','developer','web','emails','session','press','api','graphql','ajax','static','_u']);
+const PROFILE_TABS=new Set(['tagged','saved','feed']);
+const FLOW_KINDS=new Set(['login','stories','create']);
+const HANDLE=/^[a-z0-9._]{1,30}$/;
+const SEARCH_STABLE_FRAMES=24,READY_STABLE_FRAMES=6,FALLBACK_MS={home:8000,default:4000},GIVE_UP_MS=25000;
+
+function official(href){if(typeof href!=='string'||!href)return false;try{const u=new URL(href,'https://www.instagram.com');return u.protocol==='https:'&&!u.port&&!u.username&&!u.password&&HOSTS.includes(u.hostname);}catch(_){return false;}}
+function normal(parts){return '/'+parts.join('/').toLowerCase()+'/';}
+/** Classifies a path into a page kind and an identity (same table as Sources/Navigation/RouteClassifier.swift; both check Tests/route-fixtures.json). */
+function classify(pathname){
+ const parts=String(pathname||'/').split('/').filter(Boolean);
+ if(!parts.length)return {kind:'home',identity:''};
+ const first=parts[0].toLowerCase(),second=(parts[1]||'').toLowerCase();
+ const other={kind:'other',identity:normal(parts)};
+ if(BLOCKED.has(first))return {kind:'blocked',identity:''};
+ if(first==='explore')return {kind:'search',identity:''};
+ if(first==='stories')return {kind:'stories',identity:''};
+ if(first==='create')return {kind:'create',identity:''};
+ if(first==='direct'){if(second==='t'&&parts[2])return {kind:'thread',identity:parts[2]};if(!second||second==='inbox')return {kind:'inbox',identity:''};return other;}
+ if(first==='accounts'){if(LOGIN_ACCOUNTS.has(second))return {kind:'login',identity:''};if(second==='activity')return {kind:'activity',identity:''};return {kind:'settings',identity:normal(parts)};}
+ if(LOGIN_ROOTS.has(first))return {kind:'login',identity:''};
+ if(first==='notifications')return {kind:'activity',identity:''};
+ if(first==='settings')return {kind:'settings',identity:normal(parts)};
+ const offset=first==='p'?1:second==='p'&&HANDLE.test(first)?2:0;
+ if(offset){
+  const code=parts[offset];if(!code||!/^[\w-]{1,100}$/.test(code))return other;
+  const rest=(parts[offset+1]||'').toLowerCase();
+  if(!rest)return {kind:'post',identity:code};
+  if(rest==='comments'||rest==='c')return {kind:'comments',identity:code};
+  if(rest==='liked_by')return {kind:'likes',identity:code};
+  return other;
+ }
+ if(OTHER_ROOTS.has(first)||!HANDLE.test(first))return other;
+ if(parts.length===1)return {kind:'profile',identity:first};
+ if(BLOCKED.has(second))return {kind:'blocked',identity:''};
+ if(PROFILE_TABS.has(second)&&parts.length===2)return {kind:'profile',identity:first};
+ return other;
+}
+/** Decides how a navigation from the current page is performed: stay (in page), native (Router), block, or pass (native policy decides). */
+function decide(currentHref,targetHref,role='page'){
+ let target;try{target=new URL(targetHref,currentHref);}catch(_){return 'pass';}
+ if(!official(target.href))return 'pass';
+ const t=classify(target.pathname);if(t.kind==='blocked')return 'block';
+ if(role==='tray')return t.kind==='stories'||t.kind==='home'?'stay':'native';
+ let current;try{current=new URL(currentHref);}catch(_){return 'native';}
+ const c=classify(current.pathname);
+ if(c.kind!==t.kind)return 'native';
+ if(FLOW_KINDS.has(c.kind))return 'stay';
+ return c.identity===t.identity?'stay':'native';
+}
+/** Whether a page of this kind shows meaningful content, from a DOM probe. */
+function readiness(kind,probe){
+ if(probe.loginForm)return true;
+ if(probe.complete&&probe.elapsed>=(FALLBACK_MS[kind]||FALLBACK_MS.default))return true;
+ switch(kind){
+  case 'home':return probe.approvedPosts>0||probe.caughtUp;
+  case 'search':return probe.searchStable;
+  case 'profile':return probe.profileHeader&&!probe.loading;
+  case 'post':case 'comments':case 'likes':return (probe.articles>0||probe.mainMedia)&&!probe.loading;
+  case 'login':return probe.complete;
+  case 'stories':case 'create':return probe.mainMedia||probe.complete;
+  default:return probe.mainContent&&!probe.loading;
+ }
+}
+/** Stable key for a theme colour, or null for transparent / unparsable values. */
+function opaqueRGB(value){const m=String(value||'').match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/);return m&&(!m[4]||Number(m[4])===1)?m.slice(1,4).map(Number):null;}
+/** Avatar URLs must be Instagram CDN images. */
+function avatarURL(src){try{const u=new URL(src);return u.protocol==='https:'&&/(^|\.)(cdninstagram\.com|fbcdn\.net)$/.test(u.hostname)?u.href:null;}catch(_){return null;}}
+if(typeof module!=='undefined'&&module.exports){module.exports={classify,decide,readiness,official,opaqueRGB,avatarURL};return;}
+if(window.top!==window||!official(location.href))return;
+
+const boot=window.__instagramBoot||{};const role=boot.role==='tray'?'tray':'page';
+const started=typeof performance!=='undefined'&&performance.now?performance.now():Date.now();
+function now(){return typeof performance!=='undefined'&&performance.now?performance.now():Date.now();}
+function post(type,payload){try{window.webkit.messageHandlers.instagram.postMessage(Object.assign({},payload||{},{type}));}catch(_){}}
+const listeners={policy:[],refresh:[]};let policy=boot.policy||null;
+let layout={headerHeight:boot.headerHeight||0,storiesHeight:0,hideChrome:!!boot.hideChrome};
+function applyLayout(){const root=document.documentElement;if(!root)return false;
+ root.style.setProperty('--native-header-height',(Number(layout.headerHeight)||0)+'px');
+ root.style.setProperty('--native-stories-height',(Number(layout.storiesHeight)||0)+'px');
+ if(root.getAttribute('data-native-chrome')!==(layout.hideChrome?'hidden':'web'))root.setAttribute('data-native-chrome',layout.hideChrome?'hidden':'web');
+ if(root.getAttribute('data-native-role')!==role)root.setAttribute('data-native-role',role);return true;}
+window.__instagram=Object.freeze({
+ policy(value){let p=value;if(typeof p==='string'){try{p=JSON.parse(p);}catch(_){return;}}if(!p||typeof p!=='object')return;policy=p;for(const f of listeners.policy){try{f(p);}catch(_){}}},
+ refresh(){for(const f of listeners.refresh){try{f();}catch(_){}}},
+ layout(values){if(values&&typeof values==='object'){for(const k of ['headerHeight','storiesHeight'])if(Number.isFinite(values[k]))layout[k]=Math.max(0,Math.min(400,values[k]));if(typeof values.hideChrome==='boolean')layout.hideChrome=values.hideChrome;}applyLayout();},
+ on(name,f){if(listeners[name]&&typeof f==='function')listeners[name].push(f);},
+ post,
+ get currentPolicy(){return policy;}
+});
+applyLayout();
+
+// Routes: report every document and history change; hand page changes to native.
+let lastRoute='',webTitle='';
+function postRoute(){const title=(webTitle||String(document.title||'').replace(/(^|\s*[•|]\s*)Instagram.*$/,'')).trim().slice(0,80);
+ const key=location.pathname+'\n'+location.search+'\n'+title;if(key===lastRoute)return;lastRoute=key;post('route',{path:location.pathname,search:location.search,title});}
+function intercept(url){const decision=decide(location.href,url,role);
+ if(decision==='native'){try{post('navigate',{url:new URL(url,location.href).href});}catch(_){}return true;}
+ return decision==='block';}
+for(const name of ['pushState','replaceState']){const original=history[name];history[name]=function(...args){
+ if(args[2]!=null&&intercept(args[2]))return;const result=original.apply(this,args);afterRouteChange();return result;};}
+window.addEventListener('popstate',afterRouteChange);
+document.addEventListener('click',event=>{
+ if(event.defaultPrevented||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+ const link=event.target&&event.target.closest?event.target.closest('a[href]'):null;if(!link)return;
+ const href=link.getAttribute('href');if(!href||href.startsWith('#')||/^javascript:/i.test(href))return;
+ if(intercept(link.href||href)){event.preventDefault();event.stopImmediatePropagation();}
+},true);
+function afterRouteChange(){postRoute();if(role==='tray')updateViewer();}
+
+// Readiness: per-kind probes held for a few frames; a fallback reveals settled pages.
+let readySent=false,readyFrames=0,searchControl=null,searchKey='',searchFrames=0,frameQueued=false;
+function visible(node){if(!node||!node.getBoundingClientRect)return false;const r=node.getBoundingClientRect();if(!(r.width>0&&r.height>0))return false;if(typeof getComputedStyle!=='function')return true;const css=getComputedStyle(node);return css.display!=='none'&&css.visibility!=='hidden'&&css.opacity!=='0';}
+function probeSearch(complete){
+ const control=document.querySelector('input[placeholder*="Search" i],input[aria-label*="Search" i],input[type="search"],[role="combobox"]');
+ const ok=complete&&visible(control);const r=ok?control.getBoundingClientRect():null;
+ const key=ok?[r.top,r.left,r.width,r.height].map(Math.round).join(','):'';
+ searchFrames=ok&&control===searchControl&&key===searchKey?searchFrames+1:0;searchControl=control;searchKey=key;
+ return searchFrames>=SEARCH_STABLE_FRAMES;
+}
+function probe(kind){
+ const main=document.querySelector('main');const complete=document.readyState==='complete';
+ const loading=!!main&&[...main.querySelectorAll('[role="progressbar"],[data-visualcompletion="loading-state"],svg[aria-label^="Loading"]')].some(visible);
+ const mainMedia=!!main&&!!main.querySelector('img,video');
+ return {complete,elapsed:now()-started,loading,mainMedia,
+  loginForm:!!document.querySelector('input[type="password"],input[name="username"]'),
+  approvedPosts:kind==='home'?document.querySelectorAll('[data-following-approved="yes"]').length:0,
+  caughtUp:!!document.querySelector('[data-instagram-caught-up]'),
+  articles:main?main.querySelectorAll('article').length:0,
+  profileHeader:!!document.querySelector('main header img,main header h1,main header h2'),
+  mainContent:!!main&&(mainMedia||(main.textContent||'').trim().length>0),
+  searchStable:kind==='search'?probeSearch(complete):false};
+}
+function checkReady(){
+ frameQueued=false;if(readySent||role!=='page')return;
+ const kind=classify(location.pathname).kind;
+ if(readiness(kind,probe(kind)))readyFrames++;else readyFrames=0;
+ if(readyFrames>=READY_STABLE_FRAMES||(kind==='search'&&readyFrames>0)){readySent=true;postTheme();post('ready',{kind});return;}
+ if(now()-started<GIVE_UP_MS)queueFrame();
+}
+function queueFrame(){if(frameQueued)return;frameQueued=true;if(typeof requestAnimationFrame==='function')requestAnimationFrame(checkReady);else setTimeout(checkReady,16);}
+
+// Theme: mirror the page background to native surfaces.
+let lastTheme='';
+function postTheme(){if(typeof getComputedStyle!=='function')return;
+ for(const node of [document.body,document.documentElement]){if(!node)continue;const rgb=opaqueRGB(getComputedStyle(node).backgroundColor);
+  if(rgb){const key=rgb.join(',');if(key!==lastTheme){lastTheme=key;post('theme',{backgroundRGB:rgb});}return;}}}
+
+// Web chrome: mark Instagram's tab bar, top bar and app banners so NativeSkin.css hides them.
+function pathOf(a){try{const u=new URL(a.getAttribute('href'),location.href);return official(u.href)?u.pathname:null;}catch(_){return null;}}
+function findTabBar(){
+ const marked=document.querySelector('[data-native-hidden="tabbar"]');if(marked)return marked;
+ const height=window.innerHeight||0;
+ for(const seed of document.querySelectorAll('a[href="/explore/"],a[href="https://www.instagram.com/explore/"]')){
+  let node=seed.parentElement;
+  for(let depth=0;node&&depth<8&&node!==document.body;depth++,node=node.parentElement){
+   if(node.querySelector('main,article'))break;
+   const links=[...node.querySelectorAll('a[href]')].map(pathOf);
+   if(!links.includes('/'))continue;
+   const r=node.getBoundingClientRect();
+   if(r.height>0&&r.height<130&&r.top>height*0.6)return node;
+  }
+ }
+ return null;
+}
+function findTopBar(){
+ const marked=document.querySelector('[data-native-hidden="header"]');if(marked)return marked;
+ const width=window.innerWidth||0;
+ for(const seed of document.querySelectorAll('svg[aria-label="Instagram"],svg[aria-label="Back"],[aria-label="Back"]')){
+  let best=null,node=seed.parentElement;
+  for(let depth=0;node&&depth<8&&node!==document.body;depth++,node=node.parentElement){
+   if(node.querySelector('main,article,input,textarea,[role="combobox"],a[href^="/stories/"]'))break;
+   const r=node.getBoundingClientRect();
+   if(r.top<=2&&r.width>=width*0.9&&r.height>=30&&r.height<=90)best=node;
+  }
+  if(best)return best;
+ }
+ return null;
+}
+function findBanners(){
+ const found=[];
+ for(const control of document.querySelectorAll('a,button,[role="button"]')){
+  if(!/^(open( in)? (the )?app|use the app|get the app|open instagram)$/i.test((control.textContent||'').trim()))continue;
+  let node=control;
+  for(let depth=0;node&&depth<6&&node!==document.body;depth++,node=node.parentElement){
+   if(node.querySelector('main,article,input[type="password"]'))break;
+   const position=typeof getComputedStyle==='function'?getComputedStyle(node).position:'';
+   if(position==='fixed'||position==='sticky'){found.push(node);break;}
+  }
+ }
+ return found;
+}
+let lastAvatar='';
+function scanChrome(){
+ const kind=classify(location.pathname).kind;
+ const tabBar=findTabBar();
+ if(tabBar){
+  if(tabBar.getAttribute('data-native-hidden')!=='tabbar')tabBar.setAttribute('data-native-hidden','tabbar');
+  for(const link of tabBar.querySelectorAll('a[href]')){
+   const path=pathOf(link);const route=path?classify(path):null;const image=link.querySelector('img');
+   if(route&&route.kind==='profile'&&image){const url=avatarURL(image.currentSrc||image.src);const key=url?route.identity+' '+url:'';
+    if(url&&key!==lastAvatar){lastAvatar=key;post('avatar',{url,username:route.identity});}break;}
+  }
+ }
+ if(layout.hideChrome&&!FLOW_KINDS.has(kind)){
+  const header=findTopBar();
+  if(header){if(header.getAttribute('data-native-hidden')!=='header')header.setAttribute('data-native-hidden','header');
+   const heading=header.querySelector('h1,h2,[role="heading"]');const text=(heading&&heading.textContent||'').trim();
+   if(text&&text.length<=80&&text!==webTitle){webTitle=text;postRoute();}}
+ }
+ for(const banner of findBanners())if(!banner.hasAttribute('data-native-hidden'))banner.setAttribute('data-native-hidden','banner');
+}
+
+// Stories tray role: show only the tray, report its size and the story viewer state.
+let trayStyle=null,lastViewer=null,lastTray='',lastWordmark='';const confirmed=new WeakSet();
+function updateViewer(){
+ const open=location.pathname.startsWith('/stories/');if(trayStyle)trayStyle.disabled=open;
+ if(open!==lastViewer){lastViewer=open;post('storyViewer',{open});}
+ if(!open)return;
+ for(const dialog of document.querySelectorAll('[role="dialog"]')){
+  if(confirmed.has(dialog)||!/view.*story.*signed.in|signed.in.*view.*story/i.test(dialog.textContent||''))continue;
+  const button=[...dialog.querySelectorAll('button,[role="button"]')].find(b=>/^(view story|view|continue)$/i.test((b.textContent||'').trim()));
+  if(button){confirmed.add(dialog);button.click();}
+ }
+}
+function scanTray(){
+ if(!document.documentElement)return;
+ updateViewer();if(lastViewer)return;
+ if(!trayStyle){trayStyle=document.createElement('style');trayStyle.textContent='body{visibility:hidden!important;overflow:hidden!important}[data-native-story-tray]{visibility:visible!important;position:fixed!important;top:0!important;left:0!important;width:100%!important;z-index:2147483647!important}';}
+ if(!trayStyle.parentNode)document.documentElement.appendChild(trayStyle);
+ const items=[...document.querySelectorAll('a[href^="/stories/"],button[aria-label*="story" i],[role="button"][aria-label*="story" i]')];
+ let tray=null;const width=window.innerWidth||0;
+ for(const item of items){let node=item;for(let depth=0;node&&depth<7;depth++,node=node.parentElement){
+  const r=node.getBoundingClientRect();
+  if(r.height>=40&&r.height<=190&&r.width>=width*0.6&&!node.querySelector('article,a[href*="/p/"],svg[aria-label="Instagram"]'))tray=node;}}
+ if(tray){
+  for(const old of document.querySelectorAll('[data-native-story-tray]'))if(old!==tray)old.removeAttribute('data-native-story-tray');
+  if(!tray.hasAttribute('data-native-story-tray'))tray.setAttribute('data-native-story-tray','');
+  const key=Math.ceil(tray.getBoundingClientRect().height)+','+items.length;
+  if(key!==lastTray){lastTray=key;post('storiesTray',{height:Math.ceil(tray.getBoundingClientRect().height),items:items.length});}
+ }
+ const wordmark=document.querySelector('svg[aria-label="Instagram"]');
+ if(wordmark){const paths=[...wordmark.querySelectorAll('path')].slice(0,12).map(p=>({d:p.getAttribute('d')||'',evenOdd:(p.getAttribute('fill-rule')||p.getAttribute('clip-rule'))==='evenodd'})).filter(p=>p.d&&p.d.length<=20000);
+  const viewBox=wordmark.getAttribute('viewBox')||'';const key=viewBox+paths.length+(paths[0]?paths[0].d.length:0);
+  if(paths.length&&viewBox&&key!==lastWordmark){lastWordmark=key;post('wordmark',{viewBox,paths});}}
+}
+
+let chromeQueued=false;
+function onMutation(){
+ if(role==='tray'){scanTray();return;}
+ queueFrame();
+ if(!chromeQueued){chromeQueued=true;const run=()=>{chromeQueued=false;applyLayout();scanChrome();postTheme();postRoute();};
+  if(typeof requestAnimationFrame==='function')requestAnimationFrame(run);else setTimeout(run,16);}
+}
+new MutationObserver(onMutation).observe(document,{childList:true,subtree:true});
+document.addEventListener('DOMContentLoaded',onMutation);
+window.addEventListener('load',onMutation);
+postRoute();onMutation();
+})();

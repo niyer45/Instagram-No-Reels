@@ -13,7 +13,7 @@
 		74D18A07C5E508C5CB7AAC96 /* Sources/InstagramSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B546893A340427954E97452 /* Sources/InstagramSession.swift */; };
 		81DB4411B2711656C40E98F2 /* Resources/FeedFilter.js in Resources */ = {isa = PBXBuildFile; fileRef = 5AE09C2BDE65561A80343E66 /* Resources/FeedFilter.js */; };
 		984947EFA4879EB9D61D5379 /* Sources/FollowingApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F54369344DD1F8D940B77BD7 /* Sources/FollowingApp.swift */; };
-		A58A10F2D0DCD8E4B9833833 /* Sources/FollowingPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 979AA195B739929B87F2D998 /* Sources/FollowingPolicy.swift */; };
+		A58A10F2D0DCD8E4B9833833 /* Sources/Filter/FollowingPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 979AA195B739929B87F2D998 /* Sources/Filter/FollowingPolicy.swift */; };
 		FC0CB21E6ADF24E540AC513C /* Resources/PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = EAAAAEC84AAE203874A82FCF /* Resources/PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
@@ -24,7 +24,7 @@
 		429D0230C59596BAEA6CC819 /* Resources/Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Resources/Info.plist; sourceTree = "<group>"; };
 		5AE09C2BDE65561A80343E66 /* Resources/FeedFilter.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = Resources/FeedFilter.js; sourceTree = "<group>"; };
 		5B546893A340427954E97452 /* Sources/InstagramSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/InstagramSession.swift; sourceTree = "<group>"; };
-		979AA195B739929B87F2D998 /* Sources/FollowingPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/FollowingPolicy.swift; sourceTree = "<group>"; };
+		979AA195B739929B87F2D998 /* Sources/Filter/FollowingPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Filter/FollowingPolicy.swift; sourceTree = "<group>"; };
 		E6FF2144F9ADC3B4F3F0CBAF /* Sources/FollowingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/FollowingView.swift; sourceTree = "<group>"; };
 		EAAAAEC84AAE203874A82FCF /* Resources/PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Resources/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		F54369344DD1F8D940B77BD7 /* Sources/FollowingApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/FollowingApp.swift; sourceTree = "<group>"; };
@@ -45,7 +45,7 @@
 			isa = PBXGroup;
 			children = (
 				F54369344DD1F8D940B77BD7 /* Sources/FollowingApp.swift */,
-				979AA195B739929B87F2D998 /* Sources/FollowingPolicy.swift */,
+				979AA195B739929B87F2D998 /* Sources/Filter/FollowingPolicy.swift */,
 				5B546893A340427954E97452 /* Sources/InstagramSession.swift */,
 				E6FF2144F9ADC3B4F3F0CBAF /* Sources/FollowingView.swift */,
 				5AE09C2BDE65561A80343E66 /* Resources/FeedFilter.js */,
@@ -136,7 +136,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				984947EFA4879EB9D61D5379 /* Sources/FollowingApp.swift in Sources */,
-				A58A10F2D0DCD8E4B9833833 /* Sources/FollowingPolicy.swift in Sources */,
+				A58A10F2D0DCD8E4B9833833 /* Sources/Filter/FollowingPolicy.swift in Sources */,
 				74D18A07C5E508C5CB7AAC96 /* Sources/InstagramSession.swift in Sources */,
 				158D553DF2F347BF25D6D534 /* Sources/FollowingView.swift in Sources */,
 			);
