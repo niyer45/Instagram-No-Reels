@@ -79,3 +79,14 @@ the page, what you did and what you saw; never paste usernames or post content.
 - [ ] Gap or overlap under the Home header (body padding vs. Instagram's own header spacer).
 - [ ] The web top bar still visible on some page types (selector misses).
 - [ ] Login page: status bar and tab bar match Meta's grey login surface (fixed in review; confirm on device), and return to Instagram dark after signing in.
+
+## Review follow-ups (Phase 1 review; plausible, not confirmable signed out)
+
+- [ ] Right after signing in (or after Sign out → sign in), tapping Profile at once shows your profile, not a skeleton that never ends.
+- [ ] Tapping a #hashtag or location (caption, search result) pushes a page with a back chevron instead of jumping to the Search tab. Its post grid is hidden by the filter's Search rule (unchanged); note whether that page is still useful.
+- [ ] In Search, submitting a keyword search (`/explore/search/keyword/?q=…`) either shows results with a way back, or nothing changes; it must not strand you on a page with no back control.
+- [ ] On the login and sign-up pages, tapping Terms, Privacy, Locations or any other instagram.com link does not reset the tabs or behave as if you signed in (the Router treats any login → non-login navigation as a sign-in).
+- [ ] After signing in, including Instagram's "Save your login info?" step, Home shows the Following feed with the native header and Stories tray, not a login page left in the Home tab.
+- [ ] Open a post or profile from Home, a profile and the inbox, then swipe back: the page underneath still shows what it showed before (Instagram's router must not have rendered the opened page in place when Bridge.js cancelled its history change).
+- [ ] If Settings still links to `/accounts/password/change/`, it pushes normally and the session is not marked signed out (its password fields trip the login probes).
+- [ ] Scrolling a long Home feed stays smooth (Bridge.js samples the theme with `elementsFromPoint` on DOM-change frames).
