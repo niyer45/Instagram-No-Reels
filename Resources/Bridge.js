@@ -289,6 +289,21 @@ function scanChrome(){
    if(text&&text.length<=80&&text!==webTitle){webTitle=text;postRoute();}}
  }
  for(const banner of findBanners())if(!banner.hasAttribute('data-native-hidden'))banner.setAttribute('data-native-hidden','banner');
+ markHeaderSpacers();
+}
+
+/** Instagram's top bar is position:fixed and the element right after it reserves the bar's height with padding-top
+    (60 px seen on profiles), so hiding the bar alone leaves a blank strip. That sibling is marked and the skin zeroes
+    its padding while the bar stays hidden, also once the page turns out to be logged-out content and web chrome is
+    shown again. Only 30–120 px paddings count, so ordinary content spacing is left alone. */
+function markHeaderSpacers(){
+ if(typeof getComputedStyle!=='function')return;
+ for(const hidden of document.querySelectorAll('[data-native-hidden="header"]')){
+  const spacer=hidden.nextElementSibling;
+  if(!spacer||spacer.hasAttribute('data-native-header-spacer')||getComputedStyle(hidden).position!=='fixed')continue;
+  const padding=parseFloat(getComputedStyle(spacer).paddingTop)||0;
+  if(padding>=30&&padding<=120)spacer.setAttribute('data-native-header-spacer','');
+ }
 }
 
 // Stories tray role: show only the tray, report its size and the story viewer state.

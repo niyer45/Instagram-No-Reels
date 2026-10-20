@@ -272,3 +272,19 @@ test('the Home skin block scopes post-card rules to approved feed cards and uses
   }
  }
 });
+
+test('the strip a hidden fixed web header reserved is marked for collapse; ordinary spacing is left alone',()=>{
+ const p=page({path:'/instagram/',boot:{headerHeight:44,hideChrome:true}});
+ const el=(attrs,css)=>{const a=new Map(Object.entries(attrs));return {css,getAttribute:k=>a.has(k)?a.get(k):null,setAttribute:(k,v)=>a.set(k,v),hasAttribute:k=>a.has(k)};};
+ const spacer=el({},{paddingTop:'60px'}),header=el({'data-native-hidden':'header'},{position:'fixed'});header.nextElementSibling=spacer;
+ const tight=el({},{paddingTop:'12px'}),sticky=el({'data-native-hidden':'header'},{position:'sticky'}),after=el({},{paddingTop:'60px'});sticky.nextElementSibling=after;
+ const plain=el({'data-native-hidden':'header'},{position:'fixed'});plain.nextElementSibling=tight;
+ p.document.querySelectorAll=s=>s==='[data-native-hidden="header"]'?[header,sticky,plain]:[];
+ p.context.getComputedStyle=n=>({display:'block',visibility:'visible',opacity:'1',position:'static',backgroundColor:'rgb(12, 16, 20)',paddingTop:'0px',...(n&&n.css)});
+ p.listeners.mutation();p.flush(1);
+ assert.equal(spacer.getAttribute('data-native-header-spacer'),'');
+ assert.equal(after.getAttribute('data-native-header-spacer'),null);
+ assert.equal(tight.getAttribute('data-native-header-spacer'),null);
+ const css=fs.readFileSync(path.join(__dirname,'../Resources/NativeSkin.css'),'utf8');
+ assert.match(css,/\[data-native-hidden="header"\] \+ \[data-native-header-spacer\] \{ padding-top: 0 !important; \}/);
+});

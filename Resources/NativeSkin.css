@@ -30,6 +30,9 @@ img, svg, video { -webkit-user-drag: none; }
 
 /* Web chrome that Bridge.js identified structurally (tab bar, top bar, app banners). */
 [data-native-hidden] { display: none !important; }
+/* The element after the hidden fixed top bar reserves the bar's height with padding-top; collapse that
+   strip (Bridge.js markHeaderSpacers). Home's reservation for the native header is the body padding below. */
+[data-native-hidden="header"] + [data-native-header-spacer] { padding-top: 0 !important; }
 
 /* App-store prompts ("Get the app" badges) on the login and logged-out pages. */
 a[href*="apps.apple.com"], a[href*="itunes.apple.com"], a[href^="itms-apps:"] { display: none !important; }
