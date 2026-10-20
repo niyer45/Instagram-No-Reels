@@ -221,6 +221,8 @@ html[data-following-mode="feed"] [data-following-approved="yes"] form:has(textar
 }
 /* Instagram's own magnifier inside the field (ours is the background above); the clear button stays. */
 [data-native-search-field] svg[aria-label="Search"] { display: none !important; }
+/* Instagram's overlay "Search" label (the input placeholder is the single label). */
+[data-native-search-field] [data-native-search-label] { display: none !important; }
 [data-native-search-input] {
   font: 400 16px/20px -apple-system, BlinkMacSystemFont, system-ui, sans-serif !important;
   height: 36px !important;

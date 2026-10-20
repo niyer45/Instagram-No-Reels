@@ -115,6 +115,23 @@ test('Search field gets the native skin and a Cancel that appears on focus or te
  input.value='al';p.fire('input');assert.equal(p.html.getAttribute('data-native-search-active'),'yes');
 });
 
+test('Instagram\'s overlay "Search" label is hidden so Search is drawn once, and the field keeps one magnifier and one Cancel',()=>{
+ const p=searchPage((body)=>{
+  const field=body.children[0].children[0];
+  field.appendChild(h('span',{},[],{text:'Search',rect:{top:12,left:50,width:60,height:20}}));
+ });
+ const input=p.document.querySelector('input');const field=input.parentElement;
+ const labels=field.querySelectorAll('[data-native-search-label]');
+ assert.equal(labels.length,1,'Instagram\'s overlay label is marked (the skin hides it)');
+ assert.equal(labels[0].textContent,'Search');assert.equal(input.getAttribute('placeholder'),'Search','the placeholder is the one visible label');
+ assert.equal(input.getAttribute('data-native-search-label'),null);
+ p.scan();p.scan();
+ assert.equal(field.querySelectorAll('[data-native-search-label]').length,1);
+ assert.equal(field.parentElement.querySelectorAll('[data-native-search-cancel]').length,1,'one Cancel');
+ const bare=searchPage((body)=>{const f=body.children[0].children[0];f.children[1].removeAttribute('placeholder');f.appendChild(h('span',{},[],{text:'Search'}));});
+ assert.equal(bare.document.querySelector('input').getAttribute('placeholder'),'Search','no placeholder: ours keeps exactly one label');
+});
+
 test('Cancel clears the query through an input event, blurs, resets Instagram state and hides itself',()=>{
  const p=searchPage();const input=p.document.querySelector('input');let blurred=0;input.blur=()=>{blurred++;p.document.activeElement=p.body;};
  p.document.activeElement=input;input.value='alice';p.fire('input');

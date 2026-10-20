@@ -681,6 +681,14 @@ function tabScanSearch(){
  let cancel=null;
  if(field){
   tabSet(field,'data-native-search-field');
+  // Instagram can draw its own "Search" label over the field as well as the input placeholder: one label only.
+  // The placeholder stays (ours to guarantee); the overlay text is marked and hidden by the skin.
+  let overlay=false;
+  for(const node of field.querySelectorAll('span,div,label')){
+   if(node===input||node.querySelector('*')||tabText(node).toLowerCase()!=='search')continue;
+   tabSet(node,'data-native-search-label');overlay=true;
+  }
+  if(overlay&&!input.getAttribute('placeholder'))input.setAttribute('placeholder','Search');
   const row=field.parentElement;
   if(row&&row!==document.body&&!row.querySelector('main,article')){
    tabSet(row,'data-native-search-row');
