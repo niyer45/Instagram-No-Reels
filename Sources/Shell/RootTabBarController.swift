@@ -46,7 +46,7 @@ final class RootTabBarController: UIViewController {
         super.viewDidLoad()
         tabBar.onTap = { [weak self] tab in self?.tapped(tab) }
         view.addSubview(tabBar)
-        environment.theme.$background.sink { [weak self] _ in self?.applyTheme() }.store(in: &cancellables)
+        environment.theme.changes.sink { [weak self] in self?.applyTheme() }.store(in: &cancellables)
         environment.account.$avatar.sink { [weak self] image in self?.tabBar.setAvatar(image) }.store(in: &cancellables)
         show(.home)
         #if DEBUG

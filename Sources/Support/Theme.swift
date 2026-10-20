@@ -9,7 +9,12 @@ final class Theme: ObservableObject {
     static let instagramDark = UIColor(red: 12 / 255, green: 16 / 255, blue: 20 / 255, alpha: 1)
     private static let storageKey = "theme.background.v1"
 
-    @Published private(set) var background: UIColor
+    /// The current surface colour. Observe it through `changes`: a `@Published` publisher fires in
+    /// `willSet`, so observers that read `background`, `hairline` or `interfaceStyle` saw the old colour.
+    private(set) var background: UIColor { didSet { changed.send() } }
+    private let changed = PassthroughSubject<Void, Never>()
+    /// Fires once on subscription and after every change, when `background` already holds the new colour.
+    var changes: AnyPublisher<Void, Never> { changed.prepend(()).eraseToAnyPublisher() }
 
     init(defaults: UserDefaults = .standard) {
         if let rgb = defaults.array(forKey: Self.storageKey) as? [Double], let color = Self.color(rgb) {

@@ -78,4 +78,4 @@ the page, what you did and what you saw; never paste usernames or post content.
 
 - [ ] Gap or overlap under the Home header (body padding vs. Instagram's own header spacer).
 - [ ] The web top bar still visible on some page types (selector misses).
-- [ ] Login page surface colour (Meta grey) vs. Instagram dark at the status bar and tab bar on the login screen.
+- [ ] Login page: status bar and tab bar match Meta's grey login surface (fixed in review; confirm on device), and return to Instagram dark after signing in.

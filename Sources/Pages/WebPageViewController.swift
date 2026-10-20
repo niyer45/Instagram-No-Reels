@@ -103,7 +103,7 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
             edge.edges = .left
             view.addGestureRecognizer(edge)
         }
-        environment.theme.$background.sink { [weak self] _ in self?.applyTheme() }.store(in: &cancellables)
+        environment.theme.changes.sink { [weak self] in self?.applyTheme() }.store(in: &cancellables)
         showSkeleton()
         if let url {
             load(url)
