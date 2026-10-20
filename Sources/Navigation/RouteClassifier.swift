@@ -18,6 +18,7 @@ struct Route: Equatable {
     private static let loginAccounts: Set<String> = ["login", "emailsignup", "signup", "password", "onetap", "logout", "suspended", "disabled"]
     private static let otherRoots: Set<String> = ["about", "legal", "privacy", "terms", "developer", "web", "emails", "session", "press", "api", "graphql", "ajax", "static", "_u"]
     private static let profileTabs: Set<String> = ["tagged", "saved", "feed"]
+    private static let explorePages: Set<String> = ["tags", "locations"]
 
     init(kind: RouteKind, identity: String = "") {
         self.kind = kind
@@ -33,7 +34,10 @@ struct Route: Equatable {
         let normal = "/" + parts.joined(separator: "/").lowercased() + "/"
         if Self.blocked.contains(first) { self.init(kind: .blocked); return }
         switch first {
-        case "explore": self.init(kind: .search); return
+        case "explore":
+            // Hashtag and location pages are content pages of their own, not the Search tab.
+            if Self.explorePages.contains(second) { self.init(kind: .other, identity: normal); return }
+            self.init(kind: .search); return
         case "stories": self.init(kind: .stories); return
         case "create": self.init(kind: .create); return
         case "direct":

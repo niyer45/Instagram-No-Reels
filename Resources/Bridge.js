@@ -11,6 +11,7 @@ const LOGIN_ROOTS=new Set(['challenge','checkpoint','two_factor','consent','oaut
 const LOGIN_ACCOUNTS=new Set(['login','emailsignup','signup','password','onetap','logout','suspended','disabled']);
 const OTHER_ROOTS=new Set(['about','legal','privacy','terms','developer','web','emails','session','press','api','graphql','ajax','static','_u']);
 const PROFILE_TABS=new Set(['tagged','saved','feed']);
+const EXPLORE_PAGES=new Set(['tags','locations']);
 const FLOW_KINDS=new Set(['login','stories','create']);
 const HANDLE=/^[a-z0-9._]{1,30}$/;
 const SEARCH_STABLE_FRAMES=24,READY_STABLE_FRAMES=6,FALLBACK_MS={home:8000,default:4000},GIVE_UP_MS=25000;
@@ -24,7 +25,8 @@ function classify(pathname){
  const first=parts[0].toLowerCase(),second=(parts[1]||'').toLowerCase();
  const other={kind:'other',identity:normal(parts)};
  if(BLOCKED.has(first))return {kind:'blocked',identity:''};
- if(first==='explore')return {kind:'search',identity:''};
+ // Hashtag and location pages are content pages of their own, not the Search tab.
+ if(first==='explore')return EXPLORE_PAGES.has(second)?other:{kind:'search',identity:''};
  if(first==='stories')return {kind:'stories',identity:''};
  if(first==='create')return {kind:'create',identity:''};
  if(first==='direct'){if(second==='t'&&parts[2])return {kind:'thread',identity:parts[2]};if(!second||second==='inbox')return {kind:'inbox',identity:''};return other;}

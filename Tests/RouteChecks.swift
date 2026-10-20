@@ -27,5 +27,8 @@ enum RouteChecks {
             check(Presentation(kind: kind) == .push, "Content page \(kind) pushes")
         }
         check(Route(url: URL(string: "https://www.instagram.com")!).kind == .home, "Empty path is Home")
+        if let tag = URL(string: "https://www.instagram.com/explore/tags/cats/") {
+            check(Presentation(kind: Route(url: tag).kind) == .push, "Hashtag pages push instead of switching to the Search tab")
+        }
     }
 }
