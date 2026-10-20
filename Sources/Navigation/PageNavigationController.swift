@@ -67,9 +67,7 @@ final class PageNavigationController: UINavigationController, UIGestureRecognize
     }
 
     /// The shell's tab bar (drawn by the root container above every tab).
-    private var tabBar: InstagramTabBar? {
-        parent?.view.subviews.lazy.compactMap { $0 as? InstagramTabBar }.first
-    }
+    private var tabBar: InstagramTabBar? { (parent as? RootTabBarController)?.tabBar }
 
     private func setTabBar(hidden: Bool) {
         tabBarHidden = hidden

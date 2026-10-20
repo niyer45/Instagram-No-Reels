@@ -10,7 +10,8 @@ import Combine
 @MainActor
 final class RootTabBarController: UIViewController {
     private let environment: AppEnvironment
-    private let tabBar = InstagramTabBar()
+    /// The shared tab bar drawn above every tab; tab stacks hide and show it (`PageNavigationController`).
+    let tabBar = InstagramTabBar()
     private(set) var navigations: [TabItem: PageNavigationController] = [:]
     private(set) var selectedTab: TabItem = .home
     private var cancellables = Set<AnyCancellable>()
