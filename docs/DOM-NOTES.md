@@ -51,9 +51,14 @@ Native shows "Couldn't load" if nothing is ready after 20 s.
 
 `document.elementsFromPoint(viewportWidth / 2, 2)`, keeping full-width (≥ 90 %) elements;
 the first opaque `background-color` wins, then `body`, then `html`. Re-sampled 0.3, 1 and
-2.5 s after `ready` because stylesheets can repaint without DOM mutations (seen on Meta's
-login page, whose grey surface appears after first paint). Only the visible page's colour
-is applied. Fallback: native keeps the last colour (persisted across launches).
+2.5 s after `ready` because stylesheets can repaint without DOM mutations. Only the visible
+page's colour is applied. Fallback: native keeps the last colour (persisted across launches).
+
+Known miss (seen): Meta's `/accounts/login/` page paints a grey (#212121) surface while
+`html`, `body` and every element under the top-centre point report `rgb(12, 16, 20)` or
+transparent at `ready`, so the native status bar and tab bar stay Instagram dark around a
+grey login form. The grey likely comes from a layer excluded from hit-testing
+(`pointer-events: none`) or a pseudo-element. Not fixed in Phase 1.
 
 ## Stories tray (tray web view, `Bridge.js` role `tray`)
 

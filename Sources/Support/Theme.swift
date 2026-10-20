@@ -7,7 +7,6 @@ import Combine
 final class Theme: ObservableObject {
     /// Instagram's dark surface (#0C1014), used until a page reports its own.
     static let instagramDark = UIColor(red: 12 / 255, green: 16 / 255, blue: 20 / 255, alpha: 1)
-    static let link = UIColor(red: 0, green: 149 / 255, blue: 246 / 255, alpha: 1)
     private static let storageKey = "theme.background.v1"
 
     @Published private(set) var background: UIColor
