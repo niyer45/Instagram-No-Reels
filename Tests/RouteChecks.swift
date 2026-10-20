@@ -10,7 +10,8 @@ enum RouteChecks {
         let classify = object["classify"] ?? []
         let decide = object["decide"] ?? []
         let titles = object["titles"] ?? []
-        check(classify.count > 60 && decide.count > 50 && titles.count > 30, "Route fixtures loaded")
+        let presentations = object["presentations"] ?? []
+        check(classify.count > 60 && decide.count > 50 && titles.count > 30 && presentations.count > 10, "Route fixtures loaded")
         for row in classify where row.count == 3 {
             let route = Route(path: row[0])
             check(route.kind.rawValue == row[1] && route.identity == row[2], "Classify \(row[0]) -> \(row[1]) \(row[2]), got \(route.kind) \(route.identity)")
@@ -26,12 +27,17 @@ enum RouteChecks {
             let title = Route(path: row[0]).title(query: row[1], webTitle: row[2], ownUsername: row[3].isEmpty ? nil : row[3])
             check(title == row[4], "Title \(row[0])\(row[1]) = \"\(row[4])\", got \"\(title)\"")
         }
+        for row in presentations where row.count == 2 {
+            let presentation = Presentation(route: Route(path: row[0]))
+            check(presentation.name == row[1], "Presentation \(row[0]) = \(row[1]), got \(presentation.name)")
+        }
         check(Presentation(kind: .stories) == .fullScreen && Presentation(kind: .create) == .fullScreen, "Stories and create present full screen")
         check(Presentation(kind: .login) == .replaceRoot, "Login replaces the root")
         check(Presentation(kind: .blocked) == .block, "Reels routes are blocked")
-        for kind in [RouteKind.profile, .post, .comments, .likes, .inbox, .thread, .activity, .settings, .other] {
+        for kind in [RouteKind.profile, .post, .comments, .likes, .activity, .settings, .other] {
             check(Presentation(kind: kind) == .push, "Content page \(kind) pushes")
         }
+        check(Presentation(kind: .inbox) == .messagesTab && Presentation(kind: .thread) == .messagesPush, "Inbox switches to the Messages tab; threads push on it")
         check(Route(url: URL(string: "https://www.instagram.com")!).kind == .home, "Empty path is Home")
         if let tag = URL(string: "https://www.instagram.com/explore/tags/cats/") {
             check(Presentation(kind: Route(url: tag).kind) == .push, "Hashtag pages push instead of switching to the Search tab")

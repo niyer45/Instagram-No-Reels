@@ -151,6 +151,10 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
     }
 
     private func startInitialLoad() {
+        if placement == .tabRoot(.messages) {
+            // The inbox title is the signed-in username, which the bridge may report after the page is made.
+            environment.account.$username.sink { [weak self] username in self?.updateTitle(ownUsername: username) }.store(in: &cancellables)
+        }
         if let url {
             load(url)
         } else if placement == .tabRoot(.profile) {
@@ -214,24 +218,28 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
         switch placement {
         case .modal: return
         case .tabRoot(.home), .tabRoot(.search): return
-        case .tabRoot(.activity):
+        case .tabRoot(.messages):
             header = PageHeaderView(showsBack: false)
+            header.setTrailing([composeButton()])
         case .tabRoot(.profile):
             header = PageHeaderView(showsBack: false)
             header.setTrailing([profileMenuButton()])
         case .pushed:
             header = PageHeaderView(showsBack: true)
             header.onBack = { [weak self] in self?.navigationController?.popViewController(animated: true) }
-            if route.kind == .inbox, let url = URL(string: "https://www.instagram.com/direct/new/") {
-                header.setTrailing([PageHeaderView.iconButton(.compose, label: "New message") { [weak self] in
-                    guard let self else { return }
-                    self.environment.router.open(url, from: self)
-                }])
-            }
+            if route.kind == .inbox { header.setTrailing([composeButton()]) }
         }
         pageHeader = header
         view.addSubview(header)
         updateTitle()
+    }
+
+    /// The inbox's "New message" button: opens the composer through the Router.
+    private func composeButton() -> UIButton {
+        PageHeaderView.iconButton(.compose, label: "New message") { [weak self] in
+            guard let self, let url = URL(string: "https://www.instagram.com/direct/new/") else { return }
+            self.environment.router.open(url, from: self)
+        }
     }
 
     private func profileMenuButton() -> UIButton {
@@ -254,10 +262,13 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
 
     /// Native titles come from the route table (`Route.title`, fixture-checked); the page's own heading is used for
     /// threads, settings and other pages.
-    func updateTitle() {
+    func updateTitle() { updateTitle(ownUsername: environment.account.username) }
+
+    /// `ownUsername` is passed explicitly so a `$username` subscriber can use the emitted value (the store's property
+    /// changes after @Published fires).
+    private func updateTitle(ownUsername: String?) {
         guard let header = pageHeader else { return }
-        if placement == .tabRoot(.activity) { header.title = "Notifications"; return }
-        header.title = route.title(query: (webView.url ?? url)?.query ?? "", webTitle: webTitle, ownUsername: environment.account.username)
+        header.title = route.title(query: (webView.url ?? url)?.query ?? "", webTitle: webTitle, ownUsername: ownUsername)
     }
 
     /// Re-evaluates header visibility and web layout after the page kind changes.

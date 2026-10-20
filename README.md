@@ -9,9 +9,9 @@ Sign in with your existing Instagram account through Instagram’s own page. Thi
 - **Native shell:** Instagram-style native tab bar, headers, push navigation with swipe-back, skeleton loading and pull-to-refresh around Instagram’s own pages.
 - **Following-first Home:** native Home header with Instagram’s wordmark, and Instagram’s Stories tray above posts from followed accounts.
 - **Local content filters:** hides recognized Reels, ads, suggestions, and Home posts without followed-account evidence.
-- **Stories and Messages:** Instagram’s signed-in story viewer opens full screen; Messages and Notifications push from the Home header.
+- **Stories and Messages:** Instagram’s signed-in story viewer opens full screen; Notifications push from the Home header heart (with an unread dot); the header Messenger icon switches to the Messages tab.
 - **Account search:** preserves Instagram’s search bar and account results while hiding the Explore media grid. A native caught-up state appears only while Search is idle and disappears on interaction or focus.
-- **Retained tabs:** Home, Search, Notifications and your Profile keep their pages and scroll positions during tab visits. Tapping the selected tab scrolls to top, then pops to its root, then reloads.
+- **Retained tabs:** Home, Search, Messages and your Profile keep their pages and scroll positions during tab visits. Tapping the selected tab scrolls to top, then pops to its root, then reloads.
 - **Stable refresh:** pull-to-refresh holds the released pull distance until the replacement feed is ready, then settles the header, Stories, and posts together.
 - **Fast start:** Home’s web view starts loading before the interface is built; the branded splash waits only for Home and is never shown again during navigation. Instagram’s website splash is suppressed.
 - **Offline and failures:** a native “No internet connection” banner slides in under the header while offline; a page that fails shows Instagram-style “Couldn’t refresh feed” / “Couldn’t load …” text with Retry, and retries by itself when the connection returns.
@@ -52,7 +52,7 @@ The shell is UIKit; Instagram’s mobile website supplies only the content. Each
 
 | Part | Purpose |
 | --- | --- |
-| Tab shell | Home, Search, Notifications and Profile, each a navigation stack retained for the session, with a native Instagram-style tab bar showing your avatar. |
+| Tab shell | Home, Search, Messages and Profile, each a navigation stack retained for the session, with a native Instagram-style tab bar showing your avatar. |
 | Router | Classifies every URL (`Sources/Navigation/RouteClassifier.swift`, mirrored in `Resources/Bridge.js`) and pushes content pages, presents Stories full screen, switches tabs, replaces the root with Instagram’s login page, or blocks Reels. |
 | Pages | Native headers (back chevron and title, or Home’s wordmark, heart and Messenger), skeletons until the page is ready, a retry state after a failed load or 20 seconds, the offline banner, and pull-to-refresh that holds until the new page is ready. |
 | Launch | `AppDelegate` creates the shared `AppEnvironment` and starts Home’s web view and request before the scene connects; Home’s page adopts that web view. Debug builds record launch milestones (`Tools/launch-timing.sh`). |
@@ -101,7 +101,7 @@ The simulator cannot sign in to Instagram, so signed-in behaviour is validated o
 - The caught-up feed marker requires dated eligible content. Missing timestamps or a network failure do not prove that all recent posts have loaded.
 - Pagination uses Instagram’s existing page handlers and available content; it cannot guarantee an unlimited feed.
 - Live tab state is retained within the running app session. A terminated web-content process reloads the page behind its skeleton, and a page unloaded to save memory reloads when shown; Instagram may then show newer content than before, and the scroll position is restored only as far as the reloaded page reaches.
-- Instagram’s website has no create-post route, so the native Create tab is replaced by Notifications.
+- Instagram’s website has no create-post route, so the native Create tab is replaced by Messages.
 
 ## Project layout
 

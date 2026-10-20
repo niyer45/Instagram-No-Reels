@@ -15,6 +15,9 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
     private weak var viewer: ModalContainerController?
     private var trayWait: Timer?
     private var launchReported = false
+    /// Whether the user opened Notifications since the Home document last became ready; Instagram's own indicator in
+    /// that document does not update, so the dot stays hidden until the page reloads.
+    private var activitySeen = false
     /// Fires once when the feed and its tray (or the login page) are ready to be revealed.
     var onLaunchReady: (() -> Void)?
 
@@ -72,11 +75,18 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
     }
 
     override func installHeader() {
-        homeHeader.onActivity = { [weak self] in self?.openPath("/accounts/activity/") }
+        homeHeader.onActivity = { [weak self] in
+            self?.activitySeen = true
+            self?.homeHeader.setActivityBadge(false)
+            self?.openPath("/accounts/activity/")
+        }
         homeHeader.onMessages = { [weak self] in self?.openPath("/direct/inbox/") }
         homeHeader.setWordmark(WordmarkShape.cached())
         view.addSubview(homeHeader)
     }
+
+    /// Shows or hides the unread-activity dot under the header heart.
+    func setActivityBadge(_ visible: Bool) { homeHeader.setActivityBadge(visible && !activitySeen) }
 
     private func openPath(_ path: String) {
         guard let url = URL(string: "https://www.instagram.com" + path) else { return }
@@ -246,6 +256,7 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
     // MARK: Launch readiness (splash)
 
     private func feedReady() {
+        activitySeen = false
         #if DEBUG
         scrolledCaptured = false
         if isRefreshing {

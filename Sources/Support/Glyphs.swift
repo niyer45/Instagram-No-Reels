@@ -4,10 +4,10 @@ import UIKit
 /// path data with `SVGPath` and rendered as template images so they follow the tint colour.
 enum Glyph: CaseIterable {
     case home, homeSelected, search, searchSelected, heart, heartSelected
-    case messenger, person, personSelected, back, menu, compose, close
+    case messenger, messengerSelected, person, personSelected, back, menu, compose, close
     case newPost, chevronDown
 
-    private enum Paint { case stroke(CGFloat), fill(evenOdd: Bool) }
+    private enum Paint { case stroke(CGFloat), fill(evenOdd: Bool), knockout }
 
     private var layers: [(String, Paint)] {
         switch self {
@@ -26,6 +26,10 @@ enum Glyph: CaseIterable {
         case .messenger:
             return [("M12.003 2.001a9.705 9.705 0 1 1 0 19.4 10.876 10.876 0 0 1-2.895-.384.798.798 0 0 0-.533.04l-1.984.876a.801.801 0 0 1-1.123-.708l-.054-1.78a.806.806 0 0 0-.27-.569 9.49 9.49 0 0 1-3.14-7.175 9.65 9.65 0 0 1 10-9.7Z", .stroke(1.739)),
                     ("M17.79 10.132a.659.659 0 0 0-.962-.873l-2.556 2.05a.63.63 0 0 1-.758.002L11.06 9.47a1.576 1.576 0 0 0-2.277.42l-2.567 3.98a.659.659 0 0 0 .961.875l2.556-2.049a.63.63 0 0 1 .759-.002l2.452 1.84a1.576 1.576 0 0 0 2.278-.42Z", .fill(evenOdd: false))]
+        case .messengerSelected:
+            // The bubble filled, with the bolt knocked out to transparent.
+            return [("M12.003 2.001a9.705 9.705 0 1 1 0 19.4 10.876 10.876 0 0 1-2.895-.384.798.798 0 0 0-.533.04l-1.984.876a.801.801 0 0 1-1.123-.708l-.054-1.78a.806.806 0 0 0-.27-.569 9.49 9.49 0 0 1-3.14-7.175 9.65 9.65 0 0 1 10-9.7Z", .fill(evenOdd: false)),
+                    ("M17.79 10.132a.659.659 0 0 0-.962-.873l-2.556 2.05a.63.63 0 0 1-.758.002L11.06 9.47a1.576 1.576 0 0 0-2.277.42l-2.567 3.98a.659.659 0 0 0 .961.875l2.556-2.049a.63.63 0 0 1 .759-.002l2.452 1.84a1.576 1.576 0 0 0 2.278-.42Z", .knockout)]
         case .person:
             return [("M12 12.5a4.25 4.25 0 1 0 0-8.5 4.25 4.25 0 0 0 0 8.5Z", .stroke(1.75)), ("M4.5 21c.7-3.6 3.8-6 7.5-6s6.8 2.4 7.5 6", .stroke(1.75))]
         case .personSelected:
@@ -69,6 +73,10 @@ enum Glyph: CaseIterable {
                     cg.strokePath()
                 case .fill(let evenOdd):
                     cg.fillPath(using: evenOdd ? .evenOdd : .winding)
+                case .knockout:
+                    cg.setBlendMode(.clear)
+                    cg.fillPath()
+                    cg.setBlendMode(.normal)
                 }
             }
         }

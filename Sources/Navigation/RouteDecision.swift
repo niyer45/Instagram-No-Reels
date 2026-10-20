@@ -30,9 +30,18 @@ enum RouteDecision: String, Equatable {
     }
 }
 
-/// The native presentation for a route kind (§3.2 of docs/DIRECTION.md).
+/// The native presentation for a route (§3.2 of docs/DIRECTION.md). Messages routes belong to the Messages tab:
+/// the inbox switches to it, threads and other `/direct/` pages push onto its stack.
 enum Presentation: Equatable {
-    case homeTab, searchTab, push, fullScreen, replaceRoot, block
+    case homeTab, searchTab, messagesTab, messagesPush, push, fullScreen, replaceRoot, block
+
+    /// A stable name for fixture checks.
+    var name: String { String(describing: self) }
+
+    init(route: Route) {
+        if route.kind == .other, route.identity.hasPrefix("/direct/") { self = .messagesPush; return }
+        self.init(kind: route.kind)
+    }
 
     init(kind: RouteKind) {
         switch kind {
@@ -41,7 +50,9 @@ enum Presentation: Equatable {
         case .stories, .create: self = .fullScreen
         case .login: self = .replaceRoot
         case .blocked: self = .block
-        case .profile, .post, .comments, .likes, .inbox, .thread, .activity, .settings, .other: self = .push
+        case .inbox: self = .messagesTab
+        case .thread: self = .messagesPush
+        case .profile, .post, .comments, .likes, .activity, .settings, .other: self = .push
         }
     }
 }

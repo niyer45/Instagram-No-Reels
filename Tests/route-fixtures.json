@@ -67,6 +67,8 @@
     ["/_u/alice/", "other", "/_u/alice/"]
   ],
   "decide": [
+    ["https://www.instagram.com/direct/t/1/", "https://www.instagram.com/direct/inbox/", "page", "native"],
+    ["https://www.instagram.com/direct/inbox/", "https://www.instagram.com/direct/requests/", "page", "native"],
     ["https://www.instagram.com/?variant=following", "https://www.instagram.com/explore/", "page", "native"],
     ["https://www.instagram.com/?variant=following", "https://www.instagram.com/alice/", "page", "native"],
     ["https://www.instagram.com/?variant=following", "https://www.instagram.com/direct/inbox/", "page", "native"],
@@ -119,6 +121,22 @@
     ["https://www.instagram.com/alice/", "instagram://user?username=alice", "page", "pass"],
     ["https://www.instagram.com/", "https://www.instagram.com/accounts/login/?next=%2F", "tray", "block"],
     ["https://www.instagram.com/", "https://www.instagram.com/challenge/1/", "tray", "block"]
+  ],
+  "presentations": [
+    ["/direct/inbox/", "messagesTab"],
+    ["/direct/", "messagesTab"],
+    ["/direct/t/1/", "messagesPush"],
+    ["/direct/new/", "messagesPush"],
+    ["/direct/requests/", "messagesPush"],
+    ["/accounts/activity/", "push"],
+    ["/notifications/", "push"],
+    ["/alice/", "push"],
+    ["/p/ABC/", "push"],
+    ["/", "homeTab"],
+    ["/explore/", "searchTab"],
+    ["/stories/alice/1/", "fullScreen"],
+    ["/accounts/login/", "replaceRoot"],
+    ["/reels/", "block"]
   ],
   "titles": [
     ["/p/ABC/", "", "", "", "Post"],

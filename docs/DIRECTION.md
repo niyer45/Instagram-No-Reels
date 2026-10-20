@@ -92,10 +92,10 @@ Default tabs, in Instagram's native order with the Reels slot removed:
 | --- | --- | --- |
 | Home | `/?variant=following` | Native header + stories tray; filtered feed |
 | Search | `/explore/` | Account search only; idle "caught up" state rendered natively |
-| Notifications | `/accounts/activity/` | Replaces Create (decision below) |
+| Messages | `/direct/inbox/` | Messenger glyph; title is the signed-in username; threads and the composer hide the tab bar; replaces Create (decision below) |
 | Profile | `/<own username>/` | Avatar glyph; tapping the selected tab scrolls to top, second tap reloads |
 
-**Create tab decision (Phase 1): replaced by Notifications.** m-web has no URL entry
+**Create tab decision (Phase 1): replaced by Messages.** Notifications moved to the Home header only (owner's choice, cycle 1). m-web has no URL entry
 point for creating a post. Its "New post" control is a button in the web bottom nav that
 opens a native file picker from JavaScript; the follow-up steps (`/create/style/`,
 `/create/details/`) only work with that in-memory selection. Logged-out probes (Oct 2026):
@@ -105,9 +105,9 @@ native Create tab could only work by script-clicking a hidden control, which is 
 reliable. The Router still classifies `/create/...` as `create` and presents it full screen
 if Instagram's own content ever navigates there. Revisit if m-web gains a create route.
 
-Notifications and Messages also live in the Home header (native parity) and push onto the
-Home stack. Tapping the selected tab: (1) if its page is scrolled down, scroll to top;
-(2) otherwise, if pages are pushed, pop to root; (3) otherwise Home, Notifications and
+Notifications lives in the Home header heart (it pushes on the Home stack and carries the
+unread dot); the header Messenger icon switches to the Messages tab. Tapping the selected tab: (1) if its page is scrolled down, scroll to top;
+(2) otherwise, if pages are pushed, pop to root; (3) otherwise Home, Messages and
 Profile reload with the skeleton (Home also reloads the Stories tray); Search does nothing
 more. The Profile tab waits on a skeleton until the bridge reports the signed-in username
 (cached between launches) and shows the login page when the session is signed out.
@@ -138,8 +138,9 @@ needed); only Home overlays its header on the web view, because it collapses wit
 
 Link interception rule: a navigation inside a page that changes `PageKind`, or targets a
 different post/profile than the current page, is cancelled in the web view and performed
-natively: **push** for content pages (post, profile, comments, likes, activity, inbox,
-thread, settings, other), **present full-screen** for `stories` and `create`, **replace
+natively: **push** for content pages (post, profile, comments, likes, activity, settings,
+other), **go to the Messages tab** for inbox (tab switch to its root) and thread and other
+`/direct/` pages (push on the Messages stack, switching to it first), **present full-screen** for `stories` and `create`, **replace
 root** for `login`. Same-page interactions (like, follow, open comment composer, expand
 caption, variant toggles) stay in the web view. Links are decided in the window's capturing
 click phase, before Instagram's own handlers.
