@@ -90,7 +90,7 @@ Tools/launch-timing.sh <simulator-udid> [runs]     # fresh-install and warm laun
 Tools/sim-memory.sh <simulator-udid>               # resident memory of the app and its WebKit processes
 ```
 
-These use Debug-only launch environment values (`SHELL_TAB`, `SHELL_SKELETON_PREVIEW`, `SHELL_FAILURE_PREVIEW`, `SHELL_OPEN_URL(S)`, `SHELL_OFFLINE`, `SHELL_MEMORY_WARNING`, `SHELL_STALE_AFTER`, `SHELL_POP`, `SHELL_PRESENT`, and Home's fixture harness `SHELL_HOME_FIXTURE`/`SHELL_HOME_DEMO`; see `Sources/Support/DebugLaunchOptions.swift`); Release builds exclude them. Debug builds also keep local diagnostics files (filter events and launch milestones) with counts, timings and enumerated reasons only.
+These use Debug-only launch environment values (`SHELL_TAB`, `SHELL_SKELETON_PREVIEW`, `SHELL_FAILURE_PREVIEW`, `SHELL_OPEN_URL(S)`, `SHELL_OFFLINE`, `SHELL_MEMORY_WARNING`, `SHELL_STALE_AFTER`, `SHELL_POP`, `SHELL_PRESENT`, and Home's fixture harness `SHELL_HOME_FIXTURE`/`SHELL_HOME_DEMO`; see `Sources/Support/DebugLaunchOptions.swift`); Release builds exclude them. Debug builds also keep local diagnostics files (filter events and launch milestones) with counts, timings and enumerated reasons only, plus sanitized Home page outlines (`page-outline-<capture>-<n>.json`, structure only, last 6) that you can pull from a device with `xcrun devicectl device copy from --device <udid> --domain-type appDataContainer --domain-identifier com.local.following --source Library/Caches --destination <dir>`.
 
 The simulator cannot sign in to Instagram, so signed-in behaviour is validated on device with [`docs/DEVICE-CHECKLIST.md`](docs/DEVICE-CHECKLIST.md). Sanitized results for 0.4.x in [`Evidence/`](Evidence/) cover the previous architecture.
 

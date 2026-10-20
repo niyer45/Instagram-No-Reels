@@ -692,6 +692,27 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
 
     var isRefreshing: Bool { refreshPhase != .idle && refreshPhase != .waitingForRelease }
 
+    #if DEBUG
+    /// Read-only refresh state for outline diagnostics (numbers and enumerated phase only).
+    var debugRefreshState: [String: Any] {
+        var state: [String: Any] = ["snapshot": refreshSnapshot != nil]
+        switch refreshPhase {
+        case .idle: state["phase"] = "idle"
+        case .waitingForRelease: state["phase"] = "waitingForRelease"
+        case .reloading(let hold):
+            state["phase"] = "reloading"
+            state["hold"] = Double(hold)
+        case .settling: state["phase"] = "settling"
+        }
+        if let frame = refreshSnapshot?.frame { state["snapshotFrame"] = Self.ints(frame) }
+        return state
+    }
+
+    static func ints(_ rect: CGRect) -> [Int] {
+        [rect.minX, rect.minY, rect.width, rect.height].map { $0.isFinite ? Int($0.rounded()) : 0 }
+    }
+    #endif
+
     /// Hooks for Home: freeze the header at the held distance, then settle it with the posts.
     func refreshWillBegin(hold: CGFloat) {}
     func refreshSettle() {}

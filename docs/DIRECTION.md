@@ -288,7 +288,11 @@ off screen at a memory warning, unload behind a snapshot and reload when shown.
 - Selectors: document every Instagram DOM assumption in `docs/DOM-NOTES.md` with the
   selector, what it finds, and the fallback when it fails.
 - Diagnostics: DEBUG only, counts and enumerated reasons only. Never log usernames, post
-  content, cookies, or request bodies.
+  content, cookies, or request bodies. DEBUG builds also write sanitized Home page
+  outlines (`Library/Caches/page-outline-<capture>-<n>.json`, last 6; captures `ready`,
+  `ready-3s`, `refresh-start`, `refresh-loading`, `refresh-end`, `scrolled`) with structure only:
+  tags, roles, allowlisted ARIA labels, our data-* names, positions, rects and href shapes; no
+  text, URLs or usernames (`hrefShape`, `outlineTree` in Bridge.js, tested in `Tests/outline.test.cjs`).
 - Commits: small, imperative subject, body says *why*. Run the checks in §5 before every
   commit.
 

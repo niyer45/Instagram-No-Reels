@@ -103,7 +103,69 @@ function shapePath(tag,attr){
 }
 /** Avatar URLs must be Instagram CDN images. */
 function avatarURL(src){try{const u=new URL(src);return u.protocol==='https:'&&/(^|\.)(cdninstagram\.com|fbcdn\.net)$/.test(u.hostname)?u.href:null;}catch(_){return null;}}
-if(typeof module!=='undefined'&&module.exports){module.exports={classify,decide,readiness,official,opaqueRGB,surfaceRGB,avatarURL,shapePath};return;}
+/** Route words that may appear in a link shape; every other path segment is reduced to a placeholder. */
+const ROUTE_VOCAB=new Set(['p','reel','reels','tv','stories','highlights','direct','t','inbox','new','requests','explore','tags','locations','people','search','keyword','accounts','activity','edit','login','onetap','emailsignup','signup','password','change','reset','privacy_and_security','settings','notifications','tagged','saved','followers','following','liked_by','comments','c','audio','about','legal','privacy','terms','web','lite','create','style','details','challenge','your_activity','interactions','u','_u','profile','two_factor','checkpoint']);
+const VARIANT_VALUES=new Set(['following','home','past_posts','favorites']);
+/** Reduces a link to its shape (DEBUG outline): route words kept, handles, codes, ids and query values replaced. Never returns user content. */
+function hrefShape(href){
+ if(typeof href!=='string')return null;const raw=href.trim();if(!raw)return null;
+ if(raw[0]==='#')return '#';
+ const scheme=raw.match(/^([a-z][a-z0-9+.-]*):/i);
+ if(scheme){const s=scheme[1].toLowerCase();if(s==='javascript')return '<script>';if(s!=='http'&&s!=='https')return '<scheme>';}
+ let u;try{u=new URL(raw,'https://www.instagram.com/');}catch(_){return '<external>';}
+ if(!official(u.href))return '<external>';
+ const parts=u.pathname.split('/').filter(Boolean),out=[];
+ parts.forEach((seg,i)=>{const s=seg.toLowerCase(),prev=i?parts[i-1].toLowerCase():'';
+  out.push(i===0?(ROUTE_VOCAB.has(s)?s:'<user>'):prev==='p'||prev==='reel'||prev==='tv'?'<code>':prev==='stories'&&s!=='highlights'?'<user>':prev==='tags'?'<tag>':/^\d+$/.test(s)?'<id>':ROUTE_VOCAB.has(s)?s:'<x>');});
+ const query=[];u.searchParams.forEach((v,k)=>query.push(k+'='+(k==='variant'&&VARIANT_VALUES.has(v)?v:'<v>')));
+ return '/'+(out.length?out.join('/')+'/':'')+(query.length?'?'+query.join('&'):'');
+}
+const SAFE_LABELS=new Set(['Back','Home','Search','Explore','Reels','Messenger','Messages','Direct','Notifications','Activity Feed','New post','Create','Instagram','Close','Loading','Options','More','More options','Settings','Like','Unlike','Comment','Share','Share Post','Save','Remove','Down chevron icon','Chevron','Following','For you','Favorites','Stories','Carousel','Next','Previous','Go back','Play','Pause','Audio','Tags','Verified','Sponsored']);
+/** An aria-label if it is a known fixed UI label, else `<other>` (labels often carry usernames); null when absent. */
+function safeLabel(label){if(label==null||label==='')return null;return SAFE_LABELS.has(label)?label:'<other>';}
+const OUTLINE_SKIP=new Set(['script','style','link','meta','noscript','template']);
+const OUTLINE_UI=new Set(['Following','For you','Favorites']);
+const OUTLINE_DATA=['data-native-','data-following-','data-instagram-'];
+/** Structure-only outline of a DOM tree (DEBUG diagnostics): tags, roles, allowlisted labels, our own data-* names,
+    positions, rects and link shapes. Reads no other attribute and outputs no text. `env.indexes` (a Map) receives node -> index. */
+function outlineTree(body,env){
+ const {styleOf,rectOf,maxNodes=400,maxDepth=12,indexes}=env,nodes=[];let truncated=false;
+ const kinds=new Map();
+ function kindOf(node){if(kinds.has(node))return kinds.get(node);const tag=String(node.tagName||'').toLowerCase();let k=tag==='img'?1:tag==='video'?2:tag==='article'?4:0;
+  for(const c of Array.from(node.children||[]))k|=kindOf(c);kinds.set(node,k);return k;}
+ function visit(node,depth){
+  const tag=String(node.tagName||'').toLowerCase();if(OUTLINE_SKIP.has(tag))return;
+  if(nodes.length>=maxNodes){truncated=true;return;}
+  const children=Array.from(node.children||[]),css=styleOf(node)||{},e={i:nodes.length,d:depth,tag};
+  const role=node.getAttribute('role');if(role)e.role=String(role).slice(0,24);
+  const aria=safeLabel(node.getAttribute('aria-label'));if(aria!==null)e.aria=aria;
+  const data=Array.from(node.getAttributeNames?node.getAttributeNames():[]).filter(n=>OUTLINE_DATA.some(p=>n.startsWith(p)));if(data.length)e.data=data;
+  const hidden=node.getAttribute('data-native-hidden');if(hidden)e.hidden=hidden;
+  e.pos=css.position;if(css.position==='fixed'||css.position==='sticky'){e.top=css.top;e.z=css.zIndex;}
+  if(css.display==='none'||css.visibility==='hidden'||css.opacity==='0')e.vis=0;
+  if(css.opacity!==undefined&&css.opacity!=='1')e.opacity=css.opacity;
+  const r=rectOf(node)||{};e.rect=[r.x,r.y,r.width,r.height].map(v=>Math.round(Number(v)||0));
+  const k=kindOf(node),has=(k&1?'i':'')+(k&2?'v':'')+(k&4?'a':'');if(has)e.has=has;
+  e.n=children.length;
+  if(tag==='a')e.href=hrefShape(node.getAttribute('href'));
+  if(!children.length){const t=node.textContent;if(typeof t==='string'&&t.length<=24){const s=t.trim();if(s.length<=12&&OUTLINE_UI.has(s))e.ui=s;}}
+  if(indexes)indexes.set(node,e.i);
+  nodes.push(e);
+  if(tag==='svg'||depth>=maxDepth)return;
+  for(const c of children){if(truncated)return;visit(c,depth+1);}
+ }
+ if(body)visit(body,0);
+ return {nodes,truncated};
+}
+/** Marked elements of the outline (null when absent). `indexOf(node)` gives the outline index or -1. */
+function outlineMarks(doc,indexOf,env){
+ const sel={topBar:'[data-native-hidden="header"]',bottomNav:'[data-native-hidden="tabbar"]',headerSpacer:'[data-native-header-spacer]',storiesSlot:'[data-instagram-stories-slot]',followingBar:'[data-native-hidden="following-bar"]',storiesRow:'[data-native-hidden="stories-row"]'},marks={};
+ for(const k of Object.keys(sel)){const node=doc.querySelector(sel[k]);if(!node){marks[k]=null;continue;}
+  const css=env.styleOf(node)||{},r=env.rectOf(node)||{};
+  marks[k]={i:indexOf(node),tag:String(node.tagName||'').toLowerCase(),pos:css.position,rect:[r.x,r.y,r.width,r.height].map(v=>Math.round(Number(v)||0))};}
+ return marks;
+}
+if(typeof module!=='undefined'&&module.exports){module.exports={classify,decide,readiness,official,opaqueRGB,surfaceRGB,avatarURL,shapePath,hrefShape,safeLabel,outlineTree,outlineMarks};return;}
 if(window.top!==window||!official(location.href))return;
 
 const boot=window.__instagramBoot||{};const role=boot.role==='tray'?'tray':'page';
@@ -122,6 +184,14 @@ window.__instagram=Object.freeze({
  refresh(){for(const f of listeners.refresh){try{f();}catch(_){}}},
  layout(values){if(values&&typeof values==='object'){for(const k of ['headerHeight','storiesHeight'])if(Number.isFinite(values[k]))layout[k]=Math.max(0,Math.min(400,values[k]));if(typeof values.hideChrome==='boolean')layout.hideChrome=values.hideChrome;}applyLayout();},
  on(name,f){if(listeners[name]&&typeof f==='function')listeners[name].push(f);},
+ /** DEBUG diagnostics: sanitized structure of the page (see outlineTree); null in the tray. */
+ outline(){if(role!=='page')return null;
+  try{const root=document.documentElement,css=getComputedStyle.bind(window),env={styleOf:n=>css(n),rectOf:n=>n.getBoundingClientRect(),indexes:new Map()};
+   const tree=outlineTree(document.body,env),prop=k=>root.style.getPropertyValue(k),q=hrefShape('/'+location.search)||'';
+   return {route:{kind:classify(location.pathname).kind,search:q.includes('?')?q.slice(q.indexOf('?')):''},viewport:{w:window.innerWidth,h:window.innerHeight},scroll:{x:Math.round(window.scrollX),y:Math.round(window.scrollY)},documentHeight:Math.round(root.scrollHeight),
+    layout:{headerHeight:prop('--native-header-height'),storiesHeight:prop('--native-stories-height'),chrome:root.getAttribute('data-native-chrome'),page:root.getAttribute('data-native-page')},
+    marks:outlineMarks(document,n=>env.indexes.has(n)?env.indexes.get(n):-1,env),outline:tree.nodes,truncated:tree.truncated};
+  }catch(_){return {error:'exception'};}},
  post,
  get currentPolicy(){return policy;}
 });
