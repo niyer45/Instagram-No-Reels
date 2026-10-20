@@ -78,6 +78,19 @@ function readiness(kind,probe){
 }
 /** Stable key for a theme colour, or null for transparent / unparsable values. */
 function opaqueRGB(value){const m=String(value||'').match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/);return m&&(!m[4]||Number(m[4])===1)?m.slice(1,4).map(Number):null;}
+/** First opaque surface colour in a top-down list of nodes under a point. Before a node's own background, a child that
+    covers the point (`isSurface`) with `pointer-events:none` is checked: elementsFromPoint skips such layers, and Meta's
+    login page paints its grey surface with one. */
+function surfaceRGB(nodes,styleOf,isSurface){
+ const listed=new Set(nodes);
+ for(const node of nodes){if(!node)continue;
+  for(const child of Array.from(node.children||[]).slice(0,32)){
+   if(listed.has(child)||!isSurface(child))continue;const css=styleOf(child);
+   if(css.pointerEvents!=='none'||css.display==='none'||css.visibility==='hidden'||css.opacity==='0')continue;
+   const rgb=opaqueRGB(css.backgroundColor);if(rgb)return rgb;}
+  const rgb=opaqueRGB(styleOf(node).backgroundColor);if(rgb)return rgb;}
+ return null;
+}
 /** SVG path data for a wordmark shape element (path, polygon, polyline or rect); null when unusable. */
 function shapePath(tag,attr){
  tag=String(tag||'').toLowerCase();
@@ -89,7 +102,7 @@ function shapePath(tag,attr){
 }
 /** Avatar URLs must be Instagram CDN images. */
 function avatarURL(src){try{const u=new URL(src);return u.protocol==='https:'&&/(^|\.)(cdninstagram\.com|fbcdn\.net)$/.test(u.hostname)?u.href:null;}catch(_){return null;}}
-if(typeof module!=='undefined'&&module.exports){module.exports={classify,decide,readiness,official,opaqueRGB,avatarURL,shapePath};return;}
+if(typeof module!=='undefined'&&module.exports){module.exports={classify,decide,readiness,official,opaqueRGB,surfaceRGB,avatarURL,shapePath};return;}
 if(window.top!==window||!official(location.href))return;
 
 const boot=window.__instagramBoot||{};const role=boot.role==='tray'?'tray':'page';
@@ -181,8 +194,9 @@ function postTheme(){if(typeof getComputedStyle!=='function')return;
  const width=window.innerWidth||0;
  const stack=typeof document.elementsFromPoint==='function'?document.elementsFromPoint(width/2,2):[];
  const nodes=stack.filter(node=>{const r=node.getBoundingClientRect?node.getBoundingClientRect():null;return r&&r.width>=width*0.9;}).slice(0,16);
- for(const node of [...nodes,document.body,document.documentElement]){if(!node)continue;const rgb=opaqueRGB(getComputedStyle(node).backgroundColor);
-  if(rgb){const key=rgb.join(',');if(key!==lastTheme){lastTheme=key;post('theme',{backgroundRGB:rgb});}return;}}}
+ const covers=node=>{const r=node.getBoundingClientRect?node.getBoundingClientRect():null;return !!r&&r.width>=width*0.9&&r.top<=2&&r.bottom>2;};
+ const rgb=surfaceRGB([...nodes,document.body,document.documentElement],node=>getComputedStyle(node),covers);
+ if(rgb){const key=rgb.join(',');if(key!==lastTheme){lastTheme=key;post('theme',{backgroundRGB:rgb});}}}
 
 // Web chrome: mark Instagram's tab bar, top bar and app banners so NativeSkin.css hides them.
 function pathOf(a){try{const u=new URL(a.getAttribute('href'),location.href);return official(u.href)?u.pathname:null;}catch(_){return null;}}

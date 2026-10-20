@@ -1,7 +1,7 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
-const {classify,decide,readiness,official,opaqueRGB,avatarURL,shapePath}=require('../Resources/Bridge.js');
+const {classify,decide,readiness,official,opaqueRGB,surfaceRGB,avatarURL,shapePath}=require('../Resources/Bridge.js');
 const fixtures=JSON.parse(fs.readFileSync(path.join(__dirname,'route-fixtures.json'),'utf8'));
 const source=fs.readFileSync(path.join(__dirname,'../Resources/Bridge.js'),'utf8');
 
@@ -43,6 +43,25 @@ test('theme colours accept opaque values only and avatars accept Instagram CDN U
  assert.ok(avatarURL('https://instagram.fxyz1-1.fna.fbcdn.net/a.jpg'));
  for(const bad of ['http://scontent.cdninstagram.com/a.jpg','https://evilcdninstagram.com/a.jpg','https://cdninstagram.com.evil.example/a.jpg','data:image/png;base64,AA'])assert.equal(avatarURL(bad),null,bad);
  assert.equal(official('https://www.instagram.com/x'),true);assert.equal(official('https://instagram.com.evil.example/'),false);
+});
+test('theme sampling sees full-width pointer-events:none background layers that hit-testing skips',()=>{
+ const style=new Map();const styleOf=n=>style.get(n)||{backgroundColor:'rgba(0, 0, 0, 0)',pointerEvents:'auto'};
+ const html={},body={},mount={},content={},grey={},overlay={},hidden={};
+ html.children=[body];body.children=[mount];mount.children=[grey,content];content.children=[];
+ style.set(html,{backgroundColor:'rgb(12, 16, 20)'});style.set(body,{backgroundColor:'rgb(12, 16, 20)'});
+ style.set(grey,{backgroundColor:'rgb(31, 31, 32)',pointerEvents:'none'});
+ const covers=new Set([grey,overlay,hidden]);const isSurface=n=>covers.has(n);
+ // Meta's login page: the hit stack is transparent wrappers, body and html; the grey layer is not in it.
+ assert.deepEqual(surfaceRGB([content,mount,body,html],styleOf,isSurface),[31,31,32]);
+ // Without such a layer the first opaque node in the stack still wins.
+ mount.children=[content];assert.deepEqual(surfaceRGB([content,mount,body,html],styleOf,isSurface),[12,16,20]);
+ // Hit-testable, translucent, hidden or non-covering children are ignored.
+ style.set(overlay,{backgroundColor:'rgb(255, 255, 255)',pointerEvents:'auto'});
+ style.set(hidden,{backgroundColor:'rgb(255, 255, 255)',pointerEvents:'none',visibility:'hidden'});
+ const narrow={};style.set(narrow,{backgroundColor:'rgb(255, 255, 255)',pointerEvents:'none'});
+ const tint={};covers.add(tint);style.set(tint,{backgroundColor:'rgba(255, 255, 255, 0.5)',pointerEvents:'none'});
+ mount.children=[overlay,hidden,narrow,tint,content];assert.deepEqual(surfaceRGB([content,mount,body,html],styleOf,isSurface),[12,16,20]);
+ assert.equal(surfaceRGB([content],styleOf,isSurface),null);
 });
 
 function page({path='/',role='page',boot={}}={}){
