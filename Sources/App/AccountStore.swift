@@ -27,8 +27,10 @@ final class AccountStore: ObservableObject {
         }
     }
 
-    var profileURL: URL? {
-        username.flatMap { URL(string: "https://www.instagram.com/\($0)/") }
+    var profileURL: URL? { username.flatMap(Self.profileURL(for:)) }
+
+    static func profileURL(for username: String) -> URL? {
+        URL(string: "https://www.instagram.com/\(username)/")
     }
 
     func update(username: String, avatarURL url: URL) {

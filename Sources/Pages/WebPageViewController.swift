@@ -109,9 +109,10 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
             load(url)
         } else if placement == .tabRoot(.profile) {
             // The Profile route needs the signed-in username; wait for the bridge to report it.
-            environment.account.$username.combineLatest(environment.account.$session).sink { [weak self] _, session in
+            // Use the emitted values: @Published fires in willSet, before the store's properties change.
+            environment.account.$username.combineLatest(environment.account.$session).sink { [weak self] username, session in
                 guard let self, self.url == nil else { return }
-                if let profile = self.environment.account.profileURL {
+                if let profile = username.flatMap(AccountStore.profileURL(for:)) {
                     self.load(profile)
                 } else if session == .signedOut, let login = URL(string: "https://www.instagram.com/accounts/login/") {
                     self.load(login)
