@@ -340,6 +340,79 @@ function findBanners(){
  }
  return found;
 }
+
+// Following-feed web bar (Home only): the variant's top bar has no wordmark or Back icon, so findTopBar misses it. It shows
+// when the native header collapses (scroll) and in the pull-to-refresh gap. Seeds on the "Following" label, then on
+// whatever fixed/sticky full-width bar sits at the viewport top. Marked "following-bar" (not "header", which would stop
+// findTopBar from finding the wordmark header). Selector notes: docs/DOM-NOTES.md.
+const BAR_STOP='main,article,input,textarea,[role="combobox"],a[href^="/stories/"],a[href^="https://www.instagram.com/stories/"],[data-following-approved],[data-instagram-stories-slot],img,video';
+const BAR_SKIP='article,[data-following-approved],[role="dialog"],[role="menu"],[data-native-hidden]';
+let followingBar=null,lastBarSearch=-Infinity,lastBarProbe=-Infinity;
+function isHome(){return classify(location.pathname).kind==='home';}
+function barScrollY(){return Number(window.scrollY)||Number(window.pageYOffset)||0;}
+function barQualifies(node,fixedOnly){
+ if(!node||node===document.body||node===document.documentElement||node.hasAttribute('data-native-hidden')||node.hasAttribute('data-native-story-tray'))return false;
+ const r=node.getBoundingClientRect(),width=window.innerWidth||0,limit=(Number(layout.headerHeight)||0)+64;
+ if(!(r.width>=width*0.9&&r.height>=30&&r.height<=90))return false;
+ const viewportTop=r.top>=-2&&r.top<=limit,documentTop=r.top+barScrollY()>=-2&&r.top+barScrollY()<=limit;
+ if(fixedOnly){if(!viewportTop)return false;const p=getComputedStyle(node).position;if(p!=='fixed'&&p!=='sticky')return false;}
+ else if(!viewportTop&&!documentTop)return false;
+ return true;
+}
+function markFollowingBar(node){
+ const r=node.getBoundingClientRect();
+ node.setAttribute('data-native-bar-height',String(Math.round(r.height)));
+ node.setAttribute('data-native-hidden','following-bar');
+ followingBar=node;return node;
+}
+function findFollowingBarByPoint(){
+ if(typeof document.elementsFromPoint!=='function')return null;
+ const width=window.innerWidth||0;
+ for(const y of [2,20]){
+  let stack;try{stack=document.elementsFromPoint(width/2,y)||[];}catch(_){stack=[];}
+  for(const el of stack){
+   let node=el;
+   for(let depth=0;node&&depth<8&&node!==document.body&&node!==document.documentElement;depth++,node=node.parentElement){
+    if(node.querySelector(BAR_STOP))break;
+    if(barQualifies(node,true))return node;
+   }
+  }
+ }
+ return null;
+}
+function findFollowingBar(){
+ if(!layout.hideChrome||typeof getComputedStyle!=='function')return null;
+ if(followingBar&&followingBar.isConnected&&followingBar.getAttribute('data-native-hidden')==='following-bar')return followingBar;
+ followingBar=null;
+ const marked=document.querySelector('[data-native-hidden="following-bar"]');if(marked){followingBar=marked;return marked;}
+ const seeds=[];
+ for(const el of document.querySelectorAll('span,h1,h2,p,div,[aria-label="Following"]')){
+  if(el.getAttribute('aria-label')==='Following'){seeds.push(el);continue;}
+  if(el.children&&el.children.length===0&&(el.textContent||'').trim()==='Following')seeds.push(el);
+ }
+ for(const seed of seeds){
+  if(seed.closest(BAR_SKIP))continue;
+  let best=null,node=seed;
+  for(let depth=0;node&&depth<=8&&node!==document.body&&node!==document.documentElement;depth++,node=node.parentElement){
+   if(node.querySelector(BAR_STOP))break;
+   if(barQualifies(node,false))best=node;
+  }
+  if(best)return markFollowingBar(best);
+ }
+ const byPoint=findFollowingBarByPoint();
+ return byPoint?markFollowingBar(byPoint):null;
+}
+function scanFollowingBar(){
+ if(!layout.hideChrome||!isHome())return;
+ if(followingBar&&followingBar.isConnected&&followingBar.getAttribute('data-native-hidden')==='following-bar')return;
+ const t=now();if(t>lastBarSearch&&t-lastBarSearch<300)return;lastBarSearch=t;
+ findFollowingBar();
+}
+function probeFollowingBar(){
+ if(!layout.hideChrome||!isHome()||(followingBar&&followingBar.isConnected))return;
+ const t=now();if(t>lastBarProbe&&t-lastBarProbe<250)return;lastBarProbe=t;
+ const node=findFollowingBarByPoint();if(node)markFollowingBar(node);
+}
 let lastAvatar='';
 function scanChrome(){
  const kind=classify(location.pathname).kind;
@@ -357,6 +430,7 @@ function scanChrome(){
   if(header){if(header.getAttribute('data-native-hidden')!=='header')header.setAttribute('data-native-hidden','header');
    const heading=header.querySelector('h1,h2,[role="heading"]');const text=(heading&&heading.textContent||'').trim();
    if(text&&text.length<=80&&text!==webTitle){webTitle=text;postRoute();}}
+  scanFollowingBar();
  }
  for(const banner of findBanners())if(!banner.hasAttribute('data-native-hidden'))banner.setAttribute('data-native-hidden','banner');
 }
@@ -373,6 +447,22 @@ function markHeaderSpacers(){
   if(!spacer||spacer.hasAttribute('data-native-header-spacer')||getComputedStyle(hidden).position!=='fixed')continue;
   const padding=parseFloat(getComputedStyle(spacer).paddingTop)||0;
   if(padding>=30&&padding<=120)spacer.setAttribute('data-native-header-spacer','');
+ }
+ for(const bar of document.querySelectorAll('[data-native-hidden="following-bar"]')){
+  const position=getComputedStyle(bar).position,fixed=position==='fixed';
+  const spacer=bar.nextElementSibling;
+  if(fixed&&spacer&&!spacer.hasAttribute('data-native-header-spacer')){
+   const padding=parseFloat(getComputedStyle(spacer).paddingTop)||0;
+   if(padding>=30&&padding<=120)spacer.setAttribute('data-native-header-spacer','');
+  }
+  if(!fixed&&position!=='sticky')continue;
+  const height=Number(bar.getAttribute('data-native-bar-height'))||0;if(!height)continue;
+  for(const sibling of [bar.nextElementSibling,bar.previousElementSibling]){
+   if(!sibling||sibling.hasAttribute('data-native-hidden')||sibling.hasAttribute('data-native-header-spacer'))continue;
+   if(sibling.children&&sibling.children.length)continue;
+   if((sibling.textContent||'').trim())continue;
+   if(Math.abs(sibling.getBoundingClientRect().height-height)<=2)sibling.setAttribute('data-native-hidden','following-spacer');
+  }
  }
 }
 
@@ -671,6 +761,7 @@ if(role==='page')window.__instagramTabs=Object.freeze({
 let chromeQueued=false;
 function onMutation(){
  if(role==='tray'){scanTray();return;}
+ if(followingBar&&layout.hideChrome&&(!followingBar.isConnected||followingBar.getAttribute('data-native-hidden')!=='following-bar')&&isHome()){followingBar=null;findFollowingBar();}
  queueFrame();
  if(!chromeQueued){chromeQueued=true;const run=()=>{chromeQueued=false;applyLayout();scanChrome();scanTabs();markHeaderSpacers();requestTheme();postRoute();};
   if(typeof requestAnimationFrame==='function')requestAnimationFrame(run);else setTimeout(run,16);}
@@ -678,5 +769,6 @@ function onMutation(){
 new MutationObserver(onMutation).observe(document,{childList:true,subtree:true});
 document.addEventListener('DOMContentLoaded',onMutation);
 window.addEventListener('load',onMutation);
+if(role==='page')window.addEventListener('scroll',probeFollowingBar,{passive:true});
 postRoute();onMutation();
 })();

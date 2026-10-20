@@ -30,6 +30,7 @@ The simulator checks used the logged-out pages and `Tests/fixtures/home-feed.htm
 - [ ] The native header shows Instagram's real wordmark (not the script-font fallback) on the very first launch, about 103 pt wide and 16 pt from the left edge; it does not change size when the captured one replaces it. Heart and Messenger sit 16 pt from the right edge, 20 pt apart.
 - [ ] Scrolling down less than about 8 pt does nothing; scrolling further slides the header away with the content, and scrolling up brings it back. Releasing mid-way snaps it fully shown or fully hidden (a flick follows its direction). At the top of the feed it is always fully shown, it never covers the status bar, and there is no stutter.
 - [ ] Re-tapping Home while scrolled down brings the header back at once as the feed scrolls to the top.
+- [ ] Scrolling down and back up on Home never shows Instagram's web "Following" bar (or any web bar) under or instead of the native header; nor does pull to refresh.
 - [ ] Heart pushes Notifications on Home with a back chevron and title; Messenger switches to the Messages tab (no second inbox).
 - [ ] Home's skeleton gives way as soon as the first post at the top is shown, rather than after the whole feed loads; the top of the feed is never blank after the skeleton goes.
 
