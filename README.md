@@ -9,7 +9,7 @@ Sign in with your existing Instagram account through Instagram’s own page. Thi
 - **Native shell:** Instagram-style native tab bar, headers, push navigation with swipe-back, skeleton loading and pull-to-refresh around Instagram’s own pages.
 - **Following-first Home:** native Home header with Instagram’s wordmark, and Instagram’s Stories tray above posts from followed accounts.
 - **Local content filters:** hides recognized Reels, ads, suggestions, and Home posts without followed-account evidence.
-- **Stories and Messages:** Instagram’s signed-in story viewer opens full screen; Notifications push from the Home header heart (with an unread dot); the header Messenger icon switches to the Messages tab.
+- **Stories and Messages:** Instagram’s signed-in story viewer opens full screen; Notifications push from the Home header heart (with an unread dot).
 - **Account search:** preserves Instagram’s search bar and account results while hiding the Explore media grid. A native caught-up state appears only while Search is idle and disappears on interaction or focus.
 - **Retained tabs:** Home, Search, Messages and your Profile keep their pages and scroll positions during tab visits. Tapping the selected tab scrolls to top, then pops to its root, then reloads.
 - **Stable refresh:** pull-to-refresh holds the released pull distance until the replacement feed is ready, then settles the header, Stories, and posts together.
@@ -54,7 +54,7 @@ The shell is UIKit; Instagram’s mobile website supplies only the content. Each
 | --- | --- |
 | Tab shell | Home, Search, Messages and Profile, each a navigation stack retained for the session, with a native Instagram-style tab bar showing your avatar. |
 | Router | Classifies every URL (`Sources/Navigation/RouteClassifier.swift`, mirrored in `Resources/Bridge.js`) and pushes content pages, presents Stories full screen, switches tabs, replaces the root with Instagram’s login page, or blocks Reels. |
-| Pages | Native headers (back chevron and title, or Home’s wordmark, heart and Messenger), skeletons until the page is ready, a retry state after a failed load or 20 seconds, the offline banner, and pull-to-refresh that holds until the new page is ready. |
+| Pages | Native headers (back chevron and title, or Home’s wordmark and heart), skeletons until the page is ready, a retry state after a failed load or 20 seconds, the offline banner, and pull-to-refresh that holds until the new page is ready. |
 | Launch | `AppDelegate` creates the shared `AppEnvironment` and starts Home’s web view and request before the scene connects; Home’s page adopts that web view. Debug builds record launch milestones (`Tools/launch-timing.sh`). |
 | Recovery | `Connectivity` (`NWPathMonitor`) drives the offline banner and automatic retry; a terminated web-content process reloads behind the skeleton; deep or hidden pages unload behind a snapshot and reload when shown. |
 | Home | A collapsing native header, Instagram’s Stories tray hosted from a dedicated web view inside the feed’s scroll view, and the story viewer presented full screen. |
@@ -90,7 +90,7 @@ Tools/launch-timing.sh <simulator-udid> [runs]     # fresh-install and warm laun
 Tools/sim-memory.sh <simulator-udid>               # resident memory of the app and its WebKit processes
 ```
 
-These use Debug-only launch environment values (`SHELL_TAB`, `SHELL_SKELETON_PREVIEW`, `SHELL_FAILURE_PREVIEW`, `SHELL_OPEN_URL(S)`, `SHELL_OFFLINE`, `SHELL_MEMORY_WARNING`, `SHELL_STALE_AFTER`, `SHELL_POP`, `SHELL_PRESENT`, and Home's fixture harness `SHELL_HOME_FIXTURE`/`SHELL_HOME_DEMO`; see `Sources/Support/DebugLaunchOptions.swift`); Release builds exclude them. Debug builds also keep local diagnostics files (filter events and launch milestones) with counts, timings and enumerated reasons only, plus sanitized Home page outlines (`page-outline-<capture>-<n>.json`, structure only, last 6) that you can pull from a device with `xcrun devicectl device copy from --device <udid> --domain-type appDataContainer --domain-identifier com.local.following --source Library/Caches --destination <dir>`.
+These use Debug-only launch environment values (`SHELL_TAB`, `SHELL_SKELETON_PREVIEW`, `SHELL_FAILURE_PREVIEW`, `SHELL_OPEN_URL(S)`, `SHELL_OFFLINE`, `SHELL_MEMORY_WARNING`, `SHELL_STALE_AFTER`, `SHELL_POP`, `SHELL_PRESENT`, and Home's fixture harness `SHELL_HOME_FIXTURE`/`SHELL_HOME_DEMO`; see `Sources/Support/DebugLaunchOptions.swift`); Release builds exclude them. Debug builds also keep local diagnostics files (filter events and launch milestones) with counts, timings and enumerated reasons only, plus sanitized Home page outlines (`page-outline-<capture>-<n>.json`, structure only, last 12) that you can pull from a device with `xcrun devicectl device copy from --device <udid> --domain-type appDataContainer --domain-identifier com.local.following --source Library/Caches --destination <dir>`.
 
 The simulator cannot sign in to Instagram, so signed-in behaviour is validated on device with [`docs/DEVICE-CHECKLIST.md`](docs/DEVICE-CHECKLIST.md). Sanitized results for 0.4.x in [`Evidence/`](Evidence/) cover the previous architecture.
 

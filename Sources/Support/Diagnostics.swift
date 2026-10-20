@@ -94,7 +94,7 @@ enum Diagnostics {
         return Int(last)
     }
 
-    /// Writes a sanitized page outline (structure only) to Caches/page-outline-<capture>-<n>.json and keeps the 6 newest.
+    /// Writes a sanitized page outline (structure only) to Caches/page-outline-<capture>-<n>.json and keeps the 12 newest.
     /// `n` continues after the highest number already on disk, so relaunches do not overwrite earlier files.
     @MainActor
     static func writeOutline(_ outline: [String: Any], native: [String: Any] = [:], capture: String) {
@@ -111,7 +111,7 @@ enum Diagnostics {
               let data = try? JSONSerialization.data(withJSONObject: document, options: [.sortedKeys, .prettyPrinted]) else { return }
         try? data.write(to: directory.appendingPathComponent("page-outline-\(capture)-\(n).json"), options: [.atomic])
         let all = existing + [("page-outline-\(capture)-\(n).json", n)]
-        for (name, _) in all.sorted(by: { $0.1 > $1.1 }).dropFirst(6) {
+        for (name, _) in all.sorted(by: { $0.1 > $1.1 }).dropFirst(12) {
             try? manager.removeItem(at: directory.appendingPathComponent(name))
         }
     }

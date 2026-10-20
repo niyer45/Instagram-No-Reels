@@ -1,8 +1,7 @@
 import UIKit
 
 /// Native Home header: Instagram wordmark on the left (16 pt inset, 103×29 pt box), the
-/// notifications heart and Messenger on the right (24 pt glyphs, 20 pt apart, 16 pt trailing
-/// inset). Collapses with scroll (HomePageViewController drives its transform and `setCollapse`).
+/// notifications heart on the right (24 pt glyph in a 44 pt touch target, 16 pt trailing inset). Collapses with scroll (HomePageViewController drives its transform and `setCollapse`).
 final class HomeHeaderView: UIView {
     static let height: CGFloat = 44
 
@@ -10,24 +9,20 @@ final class HomeHeaderView: UIView {
     private let content = UIView()
     private let activityBadge = UIView()
     var onActivity: (() -> Void)?
-    var onMessages: (() -> Void)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         let heart = PageHeaderView.iconButton(.heart, label: "Notifications") { [weak self] in self?.onActivity?() }
-        let messenger = PageHeaderView.iconButton(.messenger, label: "Messages") { [weak self] in self?.onMessages?() }
         activityBadge.backgroundColor = InstagramTabBar.badgeColor
         activityBadge.layer.cornerRadius = 2.5
         activityBadge.isHidden = true
         activityBadge.isUserInteractionEnabled = false
         activityBadge.frame = CGRect(x: 19.5, y: 35, width: 5, height: 5)
         heart.addSubview(activityBadge)
-        let buttons = UIStackView(arrangedSubviews: [heart, messenger])
-        buttons.spacing = 0
-        for view in [content, wordmark, buttons] { view.translatesAutoresizingMaskIntoConstraints = false }
+        for view in [content, wordmark, heart] { view.translatesAutoresizingMaskIntoConstraints = false }
         addSubview(content)
         content.addSubview(wordmark)
-        content.addSubview(buttons)
+        content.addSubview(heart)
         NSLayoutConstraint.activate([
             content.leadingAnchor.constraint(equalTo: leadingAnchor),
             content.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -38,10 +33,9 @@ final class HomeHeaderView: UIView {
             wordmark.widthAnchor.constraint(equalToConstant: WordmarkView.size.width),
             wordmark.heightAnchor.constraint(equalToConstant: WordmarkView.size.height),
             // 44 pt touch targets around 24 pt glyphs: 10 pt glyph padding + 6 = 16 pt trailing inset.
-            buttons.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -6),
-            buttons.centerYAnchor.constraint(equalTo: content.centerYAnchor),
+            heart.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -6),
+            heart.centerYAnchor.constraint(equalTo: content.centerYAnchor),
             heart.widthAnchor.constraint(equalToConstant: 44), heart.heightAnchor.constraint(equalToConstant: 44),
-            messenger.widthAnchor.constraint(equalToConstant: 44), messenger.heightAnchor.constraint(equalToConstant: 44),
         ])
     }
 

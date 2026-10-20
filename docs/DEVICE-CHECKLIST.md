@@ -27,11 +27,11 @@ The simulator checks used the logged-out pages and `Tests/fixtures/home-feed.htm
 
 ### Header
 
-- [ ] The native header shows Instagram's real wordmark (not the script-font fallback) on the very first launch, about 103 pt wide and 16 pt from the left edge; it does not change size when the captured one replaces it. Heart and Messenger sit 16 pt from the right edge, 20 pt apart.
+- [ ] The native header shows Instagram's real wordmark (not the script-font fallback) on the very first launch, about 103 pt wide and 16 pt from the left edge; it does not change size when the captured one replaces it. The heart is the only button on the right, 16 pt from the right edge with a 44 pt touch target; there is no Messenger icon.
 - [ ] Scrolling down less than about 8 pt does nothing; scrolling further slides the header away with the content, and scrolling up brings it back. Releasing mid-way snaps it fully shown or fully hidden (a flick follows its direction). At the top of the feed it is always fully shown, it never covers the status bar, and there is no stutter.
 - [ ] Re-tapping Home while scrolled down brings the header back at once as the feed scrolls to the top.
 - [ ] Scrolling down and back up on Home never shows Instagram's web "Following" bar (or any web bar) under or instead of the native header; nor does pull to refresh.
-- [ ] Heart pushes Notifications on Home with a back chevron and title; Messenger switches to the Messages tab (no second inbox).
+- [ ] Heart pushes Notifications on Home with a back chevron and title.
 - [ ] Home's skeleton gives way as soon as the first post at the top is shown, rather than after the whole feed loads; the top of the feed is never blank after the skeleton goes.
 
 ### Feed
@@ -41,7 +41,7 @@ The simulator checks used the logged-out pages and `Tests/fixtures/home-feed.htm
 - [ ] The caught-up card shows a gradient ring with a check, "You're all caught up", grey "You've seen all new posts from the past 2 days." and a blue "View older posts" that loads older posts.
 - [ ] Post cards: edge to edge with no card border; 32 pt round avatar; bold 14 pt username followed by grey "• 2h"; 24 pt heart, comment and share on the left, bookmark on the right; bold like count; grey "View all N comments"; small grey timestamp ("2 hours ago"). Note any element that still looks like the website (and which one); selectors are in DOM-NOTES "Home feed skin".
 - [ ] No "Add a comment…" field under feed posts; the comment glyph still opens comments.
-- [ ] Only if Instagram itself renders light for you, native surfaces follow (header, wordmark, heart, Messenger, tray rings, card text); nothing is half light, half dark.
+- [ ] Only if Instagram itself renders light for you, native surfaces follow (header, wordmark, heart, tray rings, card text); nothing is half light, half dark.
 - [ ] Scrolling a long Home feed stays smooth.
 
 ### Pull to refresh
@@ -115,7 +115,6 @@ The simulator checks used the logged-out pages and `Tests/fixtures/home-feed.htm
 
 - [ ] The tab shows the inbox with your username as the title and a compose button; no web header under it.
 - [ ] Opening a thread pushes it on the Messages tab and hides the tab bar; back returns with the bar.
-- [ ] The Home header Messenger icon switches to the Messages tab (no second inbox).
 - [ ] The Home heart pushes Notifications on Home; its red dot shows for unread activity and clears after opening.
 - [ ] Re-tapping Messages scrolls to top, then pops to the inbox, then reloads.
 - [ ] Pull to refresh on the inbox.

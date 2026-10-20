@@ -80,7 +80,6 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
             self?.homeHeader.setActivityBadge(false)
             self?.openPath("/accounts/activity/")
         }
-        homeHeader.onMessages = { [weak self] in self?.openPath("/direct/inbox/") }
         homeHeader.setWordmark(WordmarkShape.cached())
         view.addSubview(homeHeader)
     }

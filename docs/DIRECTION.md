@@ -24,7 +24,7 @@ And must get:
 
 - A native tab bar styled like Instagram's (opaque, hairline top border, Instagram glyphs,
   the user's avatar in the Profile tab).
-- A native Home header (Instagram wordmark, notifications heart, Messenger icon) that
+- A native Home header (Instagram wordmark, notifications heart) that
   scrolls away and returns like the native app.
 - Native pull-to-refresh, skeleton (shimmer) loading placeholders, light haptics on tab
   changes and pushes.
@@ -106,7 +106,7 @@ reliable. The Router still classifies `/create/...` as `create` and presents it 
 if Instagram's own content ever navigates there. Revisit if m-web gains a create route.
 
 Notifications lives in the Home header heart (it pushes on the Home stack and carries the
-unread dot); the header Messenger icon switches to the Messages tab. Tapping the selected tab: (1) if its page is scrolled down, scroll to top;
+unread dot). Tapping the selected tab: (1) if its page is scrolled down, scroll to top;
 (2) otherwise, if pages are pushed, pop to root; (3) otherwise Home, Messages and
 Profile reload with the skeleton (Home also reloads the Stories tray); Search does nothing
 more. The Profile tab waits on a skeleton until the bridge reports the signed-in username
@@ -175,7 +175,7 @@ header. Web `allowsBackForwardNavigationGestures` is off; history is the navigat
 
 ### 3.3 Home specifics
 
-- Header: native `HomeHeaderView` (wordmark, heart, messenger). It collapses on scroll
+- Header: native `HomeHeaderView` (wordmark on the left, notifications heart on the right; Messages is a tab, so there is no Messenger icon). It collapses on scroll
   down and reappears on scroll up by observing the web view's `scrollView.contentOffset`.
 - Stories tray: the Following feed page does not render the tray; today the app overlays a
   separate `storiesWebView` showing the home-variant page's tray with heavy clipping. Keep
@@ -298,7 +298,7 @@ off screen at a memory warning, unload behind a snapshot and reload when shown.
   selector, what it finds, and the fallback when it fails.
 - Diagnostics: DEBUG only, counts and enumerated reasons only. Never log usernames, post
   content, cookies, or request bodies. DEBUG builds also write sanitized Home page
-  outlines (`Library/Caches/page-outline-<capture>-<n>.json`, last 6; captures `ready`,
+  outlines (`Library/Caches/page-outline-<capture>-<n>.json`, last 12; captures `ready`,
   `ready-3s`, `refresh-start`, `refresh-loading`, `refresh-end`, `scrolled`) with structure only:
   tags, roles, allowlisted ARIA labels, our data-* names, positions, rects and href shapes; no
   text, URLs or usernames; extra `main` (outline rooted at `main`) and `bars` (nav/header/fixed/sticky subtrees) sections (`hrefShape`, `outlineTree` in Bridge.js, tested in `Tests/outline.test.cjs`).
