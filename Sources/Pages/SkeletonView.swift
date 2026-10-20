@@ -162,6 +162,7 @@ private struct SkeletonShapes: View {
     // MARK: Profile
 
     private var profile: some View {
+        // Grid tiles are 3:4 portraits like the skinned page (NativeSkin.css Profile).
         let cell = max((width - 2) / 3, 1)
         return Group {
             HStack(spacing: 0) {
@@ -201,7 +202,7 @@ private struct SkeletonShapes: View {
                 ForEach(0..<4, id: \.self) { _ in
                     HStack(spacing: 1) {
                         ForEach(0..<3, id: \.self) { _ in
-                            Rectangle().fill(fill).frame(width: cell, height: cell)
+                            Rectangle().fill(fill).frame(width: cell, height: cell * 4 / 3)
                         }
                     }
                 }
