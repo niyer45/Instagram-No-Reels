@@ -5,7 +5,7 @@ import UIKit
 /// with `SHELL_SKELETON_PREVIEW=1` and `SHELL_HOME_FIXTURE=<absolute path to an HTML file>`
 /// (for example `Tests/fixtures/home-feed.html`), Home loads that file as the Following feed
 /// (Bridge.js, FeedFilter.js and NativeSkin.css run as on Instagram), and
-/// `SHELL_HOME_DEMO=collapse|reveal|end|card|refresh|light|dark` drives the scroll view once it is ready.
+/// `SHELL_HOME_DEMO=collapse|reveal|end|card|refresh|pull|light|dark` drives the scroll view once it is ready.
 /// Pass both with `SIMCTL_CHILD_` prefixes to `xcrun simctl launch`. Release builds exclude this.
 @MainActor
 enum HomeDemo {
@@ -15,6 +15,10 @@ enum HomeDemo {
               let html = try? String(contentsOfFile: path, encoding: .utf8),
               let base = URL(string: "https://www.instagram.com/?variant=following") else { return }
         page.webView.loadHTMLString(html, baseURL: base)
+        // A reload of a loadHTMLString document would load the real site: refresh re-loads the fixture, flagged as a reload.
+        page.debugReloadOverride = { [weak page] in
+            page?.webView.loadHTMLString(html.replacingOccurrences(of: "<head>", with: "<head><script>window.__fixtureReload=true</script>"), baseURL: base)
+        }
         let step = environment["SHELL_HOME_DEMO"] ?? ""
         Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak page] timer in
             MainActor.assumeIsolated {
@@ -46,6 +50,12 @@ enum HomeDemo {
         case "refresh":
             scrollView.refreshControl?.beginRefreshing()
             scrollView.contentOffset.y = -110
+        case "pull":
+            // A real refresh: the pulled offset is held, the document reloads hidden behind the snapshot.
+            scrollView.refreshControl?.beginRefreshing()
+            scrollView.contentOffset.y = -110
+            // One frame later, as with a real drag, so the snapshot sees the pulled layout.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak page] in page?.debugPullToRefresh() }
         case "light":
             page.environment.theme.setSystemStyle(.light)
             page.environment.theme.update(rgb: [255, 255, 255])

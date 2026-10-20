@@ -159,7 +159,7 @@ function outlineTree(body,env){
 }
 /** Marked elements of the outline (null when absent). `indexOf(node)` gives the outline index or -1. */
 function outlineMarks(doc,indexOf,env){
- const sel={topBar:'[data-native-hidden="header"]',bottomNav:'[data-native-hidden="tabbar"]',headerSpacer:'[data-native-header-spacer]',storiesSlot:'[data-instagram-stories-slot]',followingBar:'[data-native-hidden="following-bar"]',storiesRow:'[data-native-hidden="stories-row"]'},marks={};
+ const sel={topBar:'[data-native-hidden="header"]',bottomNav:'[data-native-hidden="tabbar"]',headerSpacer:'[data-native-header-spacer]',storiesSlot:'[data-instagram-stories-slot]',followingBar:'[data-native-hidden="following-bar"]',storiesRow:'[data-native-stories-row]'},marks={};
  for(const k of Object.keys(sel)){const node=doc.querySelector(sel[k]);if(!node){marks[k]=null;continue;}
   const css=env.styleOf(node)||{},r=env.rectOf(node)||{};
   marks[k]={i:indexOf(node),tag:String(node.tagName||'').toLowerCase(),pos:css.position,rect:[r.x,r.y,r.width,r.height].map(v=>Math.round(Number(v)||0))};}
@@ -173,29 +173,38 @@ const started=typeof performance!=='undefined'&&performance.now?performance.now(
 function now(){return typeof performance!=='undefined'&&performance.now?performance.now():Date.now();}
 function post(type,payload){try{window.webkit.messageHandlers.instagram.postMessage(Object.assign({},payload||{},{type}));}catch(_){}}
 const listeners={policy:[],refresh:[]};let policy=boot.policy||null;
-let layout={headerHeight:boot.headerHeight||0,storiesHeight:boot.storiesHeight||0,hideChrome:!!boot.hideChrome};
+let layout={headerHeight:boot.headerHeight||0,storiesHeight:boot.storiesHeight||0,hideChrome:!!boot.hideChrome,refreshing:!!boot.refreshing};
+// Refresh: native sets `refreshing` while a reload is held behind a snapshot, so the reloading document stays invisible
+// (NativeSkin.css). If native never clears it, the document reveals itself after REFRESH_FAILSAFE_MS.
+const REFRESH_FAILSAFE_MS=25000;let refreshTimer=null;
+function armRefreshFailsafe(){if(refreshTimer!==null||!layout.refreshing)return;refreshTimer=setTimeout(()=>{refreshTimer=null;layout.refreshing=false;applyLayout();},REFRESH_FAILSAFE_MS);}
+function setAttr(root,name,value){if(value===null){if(root.getAttribute(name)!==null&&root.removeAttribute)root.removeAttribute(name);}else if(root.getAttribute(name)!==value)root.setAttribute(name,value);}
 function applyLayout(){const root=document.documentElement;if(!root)return false;
  root.style.setProperty('--native-header-height',(Number(layout.headerHeight)||0)+'px');
  root.style.setProperty('--native-stories-height',(Number(layout.storiesHeight)||0)+'px');
  if(root.getAttribute('data-native-chrome')!==(layout.hideChrome?'hidden':'web'))root.setAttribute('data-native-chrome',layout.hideChrome?'hidden':'web');
- if(root.getAttribute('data-native-role')!==role)root.setAttribute('data-native-role',role);return true;}
+ if(root.getAttribute('data-native-role')!==role)root.setAttribute('data-native-role',role);
+ setAttr(root,'data-native-refreshing',layout.refreshing?'':null);
+ if(!layout.refreshing&&refreshTimer!==null){clearTimeout(refreshTimer);refreshTimer=null;}
+ if(role==='page')setAttr(root,'data-native-stories',boot.storiesSlot===true&&Number(layout.storiesHeight)>0?'tray':null);
+ return true;}
 window.__instagram=Object.freeze({
  policy(value){let p=value;if(typeof p==='string'){try{p=JSON.parse(p);}catch(_){return;}}if(!p||typeof p!=='object')return;policy=p;for(const f of listeners.policy){try{f(p);}catch(_){}}},
  refresh(){for(const f of listeners.refresh){try{f();}catch(_){}}},
- layout(values){if(values&&typeof values==='object'){for(const k of ['headerHeight','storiesHeight'])if(Number.isFinite(values[k]))layout[k]=Math.max(0,Math.min(400,values[k]));if(typeof values.hideChrome==='boolean')layout.hideChrome=values.hideChrome;}applyLayout();},
+ layout(values){if(values&&typeof values==='object'){for(const k of ['headerHeight','storiesHeight'])if(Number.isFinite(values[k]))layout[k]=Math.max(0,Math.min(400,values[k]));if(typeof values.hideChrome==='boolean')layout.hideChrome=values.hideChrome;if(typeof values.refreshing==='boolean'){layout.refreshing=values.refreshing;armRefreshFailsafe();}}applyLayout();},
  on(name,f){if(listeners[name]&&typeof f==='function')listeners[name].push(f);},
  /** DEBUG diagnostics: sanitized structure of the page (see outlineTree); null in the tray. */
  outline(){if(role!=='page')return null;
   try{const root=document.documentElement,css=getComputedStyle.bind(window),env={styleOf:n=>css(n),rectOf:n=>n.getBoundingClientRect(),indexes:new Map()};
    const tree=outlineTree(document.body,env),prop=k=>root.style.getPropertyValue(k),q=hrefShape('/'+location.search)||'';
    return {route:{kind:classify(location.pathname).kind,search:q.includes('?')?q.slice(q.indexOf('?')):''},viewport:{w:window.innerWidth,h:window.innerHeight},scroll:{x:Math.round(window.scrollX),y:Math.round(window.scrollY)},documentHeight:Math.round(root.scrollHeight),
-    layout:{headerHeight:prop('--native-header-height'),storiesHeight:prop('--native-stories-height'),chrome:root.getAttribute('data-native-chrome'),page:root.getAttribute('data-native-page')},
+    layout:{headerHeight:prop('--native-header-height'),storiesHeight:prop('--native-stories-height'),chrome:root.getAttribute('data-native-chrome'),page:root.getAttribute('data-native-page'),stories:root.getAttribute('data-native-stories'),refreshing:root.getAttribute('data-native-refreshing')!==null},
     marks:outlineMarks(document,n=>env.indexes.has(n)?env.indexes.get(n):-1,env),outline:tree.nodes,truncated:tree.truncated};
   }catch(_){return {error:'exception'};}},
  post,
  get currentPolicy(){return policy;}
 });
-applyLayout();
+applyLayout();armRefreshFailsafe();
 
 // Routes: report every document and history change; hand page changes to native.
 let lastRoute='',webTitle='';
@@ -413,6 +422,31 @@ function probeFollowingBar(){
  const t=now();if(t>lastBarProbe&&t-lastBarProbe<250)return;lastBarProbe=t;
  const node=findFollowingBarByPoint();if(node)markFollowingBar(node);
 }
+
+// Instagram's own stories row inside the feed document (Home page role): marked so NativeSkin.css hides it while the native
+// tray is active (html[data-native-stories="tray"]). Items are story links/buttons outside cards; the row is the outermost
+// ancestor (<= 7 up) that is 40-190 px tall, wide, holds >= 2 items and no post, card, slot or main. Selector notes: docs/DOM-NOTES.md.
+const STORY_ITEMS='a[href^="/stories/"],a[href^="https://www.instagram.com/stories/"],button[aria-label*="story" i],[role="button"][aria-label*="story" i]';
+const STORY_ITEM_SKIP='article,[data-following-approved],[data-native-hidden],[role="dialog"]';
+const STORY_ROW_EXCLUDE='article,a[href*="/p/"],[data-following-approved],[data-instagram-stories-slot],main';
+function scanStoriesRow(){
+ if(role!=='page'||!isHome())return;
+ for(const old of document.querySelectorAll('[data-native-stories-row]'))
+  if(!old.isConnected||old.querySelector(STORY_ROW_EXCLUDE))old.removeAttribute('data-native-stories-row');
+ if(document.querySelector('[data-native-stories-row]'))return;
+ const items=[...document.querySelectorAll(STORY_ITEMS)].filter(i=>!i.closest(STORY_ITEM_SKIP));
+ if(items.length<2)return;
+ const width=window.innerWidth||0,found=[];
+ for(const item of items){
+  let best=null,node=item.parentElement;
+  for(let depth=0;node&&depth<7&&node!==document.body&&node!==document.documentElement;depth++,node=node.parentElement){
+   const r=node.getBoundingClientRect();
+   if(r.height>=40&&r.height<=190&&r.width>=width*0.6&&items.filter(i=>node.contains(i)).length>=2&&!node.querySelector(STORY_ROW_EXCLUDE))best=node;
+  }
+  if(best&&!found.includes(best))found.push(best);
+ }
+ for(const row of found)if(!found.some(o=>o!==row&&o.contains(row)))row.setAttribute('data-native-stories-row','');
+}
 let lastAvatar='';
 function scanChrome(){
  const kind=classify(location.pathname).kind;
@@ -433,6 +467,7 @@ function scanChrome(){
   scanFollowingBar();
  }
  for(const banner of findBanners())if(!banner.hasAttribute('data-native-hidden'))banner.setAttribute('data-native-hidden','banner');
+ scanStoriesRow();
 }
 
 /** Instagram's top bar is position:fixed and the element right after it reserves the bar's height with padding-top

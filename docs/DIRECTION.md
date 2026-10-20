@@ -193,7 +193,14 @@ header. Web `allowsBackForwardNavigationGestures` is off; history is the navigat
   release, a snapshot of the content below the spinner stays up while the document
   reloads; on `ready` the spinner ends and the snapshot (and the Home header) slide up by
   the held distance together, then the snapshot fades. While pulling, the Home header stays
-  put and the spinner shows in the gap below it (Phase 2: the native app does this; the
+  put and the spinner shows in the gap below it. The reloading document is never visible
+  before `ready`: native sets boot/layout `refreshing` before `reload()`, `NativeSkin.css`
+  makes `html[data-native-refreshing] body` transparent (the page colour still paints; a
+  25 s failsafe in `Bridge.js` clears it), and native clears it on `ready` (and on every
+  cancel path) before the settle starts. The live tray host is hidden (alpha 0) while the
+  snapshot shows the previous tray, and returns at settle. Instagram's own stories row in
+  the feed document (`data-native-stories-row`) is hidden whenever the native tray is active
+  (`html[data-native-stories="tray"]`), so there is never a second row (Phase 2: the native app does this; the
   Phase 1 header sliding down under the spinner did not match).
 - Tray placement: `StoriesTrayHost` is a subview of the feed web view's `scrollView` at the
   document position FeedFilter reports for the slot (`storiesSlot`), so it scrolls with
@@ -234,9 +241,10 @@ Removed (Phase 1): `scroll {y, dy}`. Native observes the web view's
 bridge scroll stream would only add latency and message traffic.
 
 Native -> page uses `window.__instagram.policy(json)`, `window.__instagram.refresh()` and
-`window.__instagram.layout({headerHeight, storiesHeight, hideChrome})` (CSS variables and
-whether web chrome is hidden), all exposed from `Bridge.js`. Per-web-view values that must
-exist at document start (role `page`/`tray`, header height, stories slot, policy) are in
+`window.__instagram.layout({headerHeight, storiesHeight, hideChrome, refreshing})` (CSS variables,
+whether web chrome is hidden, and whether the reloading document is held invisible for a
+refresh), all exposed from `Bridge.js`. Per-web-view values that must
+exist at document start (role `page`/`tray`, header height, stories slot and height, `refreshing`, policy) are in
 `window.__instagramBoot`. Phase 2 adds `window.__instagramTray.closeViewer()` (tray web view)
 and `window.__instagramTabs` (`switchAccount`, `unread`, `cancelSearch`, `hasSearchField`) for
 the Home story viewer and the Search, Notifications and Profile tabs; no new message types.

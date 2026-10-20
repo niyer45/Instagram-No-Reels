@@ -45,6 +45,14 @@ html[data-native-chrome="hidden"] body {
   box-sizing: border-box;
 }
 
+/* Pull-to-refresh: native holds a snapshot of the old feed above the reloading document and sets
+   `refreshing` until the new one is ready. Opacity on body also hides its fixed descendants; the html
+   background (the page colour) still paints. */
+html[data-native-refreshing] body { opacity: 0 !important; }
+
+/* Instagram's own stories row in the feed (Bridge.js scanStoriesRow) is hidden while the native tray is active. */
+html[data-native-stories="tray"] [data-native-stories-row] { display: none !important; }
+
 /* Stories tray spacer on the Following feed: the native tray sits over it. */
 [data-instagram-stories-slot] { display: block; width: 100%; pointer-events: none; }
 

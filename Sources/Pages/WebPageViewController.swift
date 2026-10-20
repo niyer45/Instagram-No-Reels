@@ -68,6 +68,11 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
     private enum RefreshPhase: Equatable { case idle, waitingForRelease, reloading(hold: CGFloat), settling }
     private var refreshPhase = RefreshPhase.idle
     private var refreshSnapshot: UIView?
+    /// True from the reload of a refresh until the reveal is sent: the reloading document is kept invisible
+    /// (`UserScripts.Boot.refreshing`) behind the snapshot of the previous feed.
+    private var refreshHidesDocument = false
+    /// Bumped whenever a pending settle must not run (new refresh, settle started, cancel).
+    private var refreshGeneration = 0
 
     init(environment: AppEnvironment, url: URL?, placement: Placement) {
         self.environment = environment
@@ -96,7 +101,8 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
         UserScripts.Boot(role: .page,
                          headerHeight: headerOverlaysContent ? headerHeight : 0,
                          hideChrome: ![RouteKind.login, .stories, .create].contains(kind),
-                         storiesSlot: storiesSlot)
+                         storiesSlot: storiesSlot,
+                         refreshing: refreshHidesDocument)
     }
 
     var skeletonLayout: SkeletonLayout? {
@@ -664,15 +670,42 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
             refreshSnapshot = snapshot
         }
         refreshPhase = .reloading(hold: hold)
+        refreshGeneration += 1
+        refreshHidesDocument = true
         refreshWillBegin(hold: hold)
         isReady = false
         startTimeout()
+        // The reloaded document starts hidden: the boot values apply to its next document.
+        environment.webFactory.update(currentBoot, for: webView)
+        // The old document stays on screen until the new one commits (and WebKit may move or reset its offset):
+        // it is hidden at once; the snapshot above already shows it.
+        webView.evaluateJavaScript("window.__instagram&&window.__instagram.layout({refreshing:true})", completionHandler: nil)
+        #if DEBUG
+        // A fixture document (loadHTMLString) would reload the real site; the Home demo re-loads its fixture instead.
+        if let reload = debugReloadOverride { reload(); return }
+        #endif
         webView.reload()
     }
 
     private func finishRefreshIfNeeded() {
         guard case .reloading(let hold) = refreshPhase else { return }
         refreshPhase = .settling
+        refreshGeneration += 1
+        let generation = refreshGeneration
+        refreshHidesDocument = false
+        guard let web = webViewStorage else { settleRefresh(hold: hold, generation: generation); return }
+        // Reveal the new document under the snapshot, and settle once WebKit has painted it (or after 0.3 s regardless).
+        environment.webFactory.update(currentBoot, for: web)
+        web.evaluateJavaScript("window.__instagram&&window.__instagram.layout({refreshing:false})") { [weak self] _, _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.settleRefresh(hold: hold, generation: generation) }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.settleRefresh(hold: hold, generation: generation) }
+    }
+
+    /// Slides the snapshot (and, through `refreshSettle`, the header) up by the held distance, then fades it.
+    private func settleRefresh(hold: CGFloat, generation: Int) {
+        guard generation == refreshGeneration, refreshPhase == .settling else { return }
+        refreshGeneration += 1
         UIView.performWithoutAnimation {
             webView.scrollView.refreshControl?.endRefreshing()
             webView.scrollView.setContentOffset(.zero, animated: false)
@@ -694,10 +727,18 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
 
     private func cancelRefresh() {
         guard refreshPhase != .idle else { return }
-        webView.scrollView.refreshControl?.endRefreshing()
+        refreshGeneration += 1
+        let wasHiding = refreshHidesDocument
+        refreshHidesDocument = false
+        webViewStorage?.scrollView.refreshControl?.endRefreshing()
         refreshSnapshot?.removeFromSuperview()
         refreshSnapshot = nil
         refreshPhase = .idle
+        // The document must not stay invisible. Never creates a web view (hibernate may have released it).
+        if let web = webViewStorage {
+            environment.webFactory.update(currentBoot, for: web)
+            if wasHiding { web.evaluateJavaScript("window.__instagram&&window.__instagram.layout({refreshing:false})", completionHandler: nil) }
+        }
         refreshDidFinish()
     }
 
@@ -717,6 +758,16 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
         }
         if let frame = refreshSnapshot?.frame { state["snapshotFrame"] = Self.ints(frame) }
         return state
+    }
+
+    /// DEBUG harness: replaces `webView.reload()` in a refresh.
+    var debugReloadOverride: (() -> Void)?
+
+    /// Drives a real refresh without a touch (Home demo): the caller has set the offset and begun the refresh control.
+    func debugPullToRefresh() {
+        guard refreshPhase == .idle else { return }
+        refreshPhase = .waitingForRelease
+        performRefresh()
     }
 
     static func ints(_ rect: CGRect) -> [Int] {

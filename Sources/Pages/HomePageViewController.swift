@@ -221,14 +221,19 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
         #endif
         heldPull = hold
         setCollapse(0)
+        // The snapshot shows the previous tray in place; the live one reloads out of sight.
+        tray.alpha = 0
         tray.load()
     }
 
     override func refreshSettle() {
         setCollapse(0)
+        // Under the sliding snapshot; where the snapshot fades the live tray is at the same place.
+        UIView.performWithoutAnimation { tray.alpha = 1 }
     }
 
     override func refreshDidFinish() {
+        UIView.performWithoutAnimation { tray.alpha = 1 }
         heldPull = nil
         travel = 0
     }
@@ -311,6 +316,7 @@ final class HomePageViewController: WebPageViewController, StoriesTrayHostDelega
                     "trayHeight": Double(self.trayHeight),
                     "isReady": self.isReady,
                     "isLoginContent": self.isLoginContent,
+                    "refreshingBoot": self.currentBoot.refreshing,
                     "refresh": self.debugRefreshState,
                 ]
                 Diagnostics.writeOutline(outline, native: native, capture: capture)
