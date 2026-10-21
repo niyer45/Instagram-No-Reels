@@ -66,7 +66,7 @@ function post(author='alice',text='A photo') {
     contains:a=>false,
     get textContent(){return this.text;},
     getAttribute:k=>attributes.get(k)||null,setAttribute:(k,v)=>attributes.set(k,v),
-    querySelectorAll(s) {if(s==='span,a')return (this.labels||[]).map(t=>typeof t==='string'?{textContent:t,closest:()=>null}:{textContent:t.text,closest:()=>t.inComments?{}:null});if(s==='header,[data-testid="sponsored-label"],[aria-label="Sponsored"]')return this.disclosure?[{querySelectorAll:()=>[{textContent:this.disclosure}]}]:[];if(s==='a[href]'||s==='a[href*="/p/"]') return [{getAttribute:()=>'/p/ABC/'},{getAttribute:()=>'/p/ABC/'}];if(s==='h2 a[href],h3 a[href]'&&this.heading)return [{getAttribute:()=>'/'+this.author+'/',textContent:this.author,closest:()=>null}];return [];},
+    querySelectorAll(s) {if(s==='span,a')return (this.labels||[]).map(t=>typeof t==='string'?{textContent:t,closest:()=>null}:{textContent:t.text,closest:()=>t.inComments?{}:null});if(s==='header,[data-testid="sponsored-label"],[aria-label="Sponsored"]')return this.disclosure?[{querySelectorAll:()=>[{textContent:this.disclosure}]}]:[];if(s==='a[href*="/reel/"],a[href*="/reels/"]')return [...(this.reel?['/reel/X/']:[]),...(this.reelLinks||[])].map(h=>({getAttribute:()=>h}));if(s==='a[href]'||s==='a[href*="/p/"]') return [{getAttribute:()=>'/p/ABC/'},{getAttribute:()=>'/p/ABC/'}];if(s==='h2 a[href],h3 a[href]'&&this.heading)return [{getAttribute:()=>'/'+this.author+'/',textContent:this.author,closest:()=>null}];return [];},
     querySelector(s) {
       if(s==='img,video,a[href*="/p/"]'||s==='img,video')return {};
       if(s==='header,h2,h3')return this.header||this.heading?{}:null;
@@ -486,4 +486,25 @@ test('Following feed applies the two-day window to unmatched cards from their ow
  const bad=post();bad.datetime='not a date';fixture({search:FOLLOWING,clock:1e12,articles:[bad]});assert.equal(bad.getAttribute('data-following-approved'),'yes');
  const home=post();home.datetime='2001-09-06T01:46:40.000Z';const h=fixture({clock:1e12,articles:[home]});// non-Following feeds keep the metadata-only cutoff
  assert.equal(home.getAttribute('data-following-approved'),'yes');assert.equal(h.document.querySelector('[data-instagram-caught-up]'),null);
+});
+
+function followingCard(links,extra={}){const a=post();a.reelLinks=links;Object.assign(a,extra);return a;}
+function followingDiag(a){const f=fixture({search:'?variant=following',articles:[a]});const d=f.window.__instagramFilterDiagnostics();return {f,card:d.cards[0]};}
+test('Following-feed photo with music audio link is shown, not mistaken for a Reel',()=>{
+ const a=followingCard(['/reels/audio/123/']);const {f,card}=followingDiag(a);
+ assert.equal(a.getAttribute('data-following-approved'),'yes');assert.equal(card.reelSignal,null);assert.notEqual(card.reason,'blocked-reel');
+ assert.equal(/a\[href\^="\/reels"\]:not\(\[href\^="\/reels\/audio\/"\]\)/.test(f.root.styleText),true);
+});
+test('Following-feed card with Reel permalink stays hidden and reports permalink',()=>{
+ const a=followingCard(['/reel/ABC/']);const {card}=followingDiag(a);
+ assert.equal(a.getAttribute('data-following-approved'),'no');assert.equal(card.reelSignal,'permalink');assert.equal(card.reason,'blocked-reel');
+});
+test('Following-feed card with /reels/ nav link stays hidden and reports reels-link; audio plus reels still hidden',()=>{
+ const a=followingCard(['/reels/']);const {card}=followingDiag(a);
+ assert.equal(a.getAttribute('data-following-approved'),'no');assert.equal(card.reelSignal,'reels-link');
+ const b=followingCard(['/reels/audio/9/','/reels/']);assert.equal(followingDiag(b).card.reelSignal,'reels-link');assert.equal(b.getAttribute('data-following-approved'),'no');
+});
+test('reelSignal reports glyph, and null for ordinary cards',()=>{
+ const g=followingCard([],{reelGlyph:true});assert.equal(followingDiag(g).card.reelSignal,'glyph');assert.equal(g.getAttribute('data-following-approved'),'no');
+ assert.equal(followingDiag(followingCard([])).card.reelSignal,null);
 });
