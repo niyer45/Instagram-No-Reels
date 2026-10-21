@@ -516,10 +516,14 @@ function probeFollowingBar(){
 const STORY_ITEMS='a[href^="/stories/"],a[href^="https://www.instagram.com/stories/"],button[aria-label*="story" i],[role="button"][aria-label*="story" i]';
 const STORY_ITEM_SKIP='article,[data-following-approved],[data-native-hidden],[role="dialog"],[role="menu"],[aria-modal="true"]';
 // A share sheet or composer that is not marked as a dialog still floats: items under a fixed-position ancestor are never the feed's row.
+// A fixed ancestor that also contains the feed (main or an article) is a scroll container, not an overlay, so it does not count; the walk stops at main.
 function inFixedOverlay(item){
  if(typeof getComputedStyle!=='function')return false;
  let node=item.parentElement;
- for(let depth=0;node&&depth<12&&node!==document.body&&node!==document.documentElement;depth++,node=node.parentElement)if(getComputedStyle(node).position==='fixed')return true;
+ for(let depth=0;node&&depth<12&&node!==document.body&&node!==document.documentElement;depth++,node=node.parentElement){
+  if(node.tagName==='MAIN')return false;
+  if(getComputedStyle(node).position==='fixed'&&!node.querySelector('main, article'))return true;
+ }
  return false;
 }
 const STORY_ROW_EXCLUDE='article,a[href*="/p/"],[data-following-approved],[data-instagram-stories-slot],main';

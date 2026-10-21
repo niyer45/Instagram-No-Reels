@@ -303,6 +303,16 @@ test('Add to story buttons in a floating sheet are not the stories row, in a dia
  assert.notEqual(inFlow.html.querySelector('[data-native-stories-row]'),null,'the feed row itself is still found');
 });
 
+test('a genuine stories row inside a fixed scroll container that also holds the feed is still marked',()=>{
+ const row=h('div',{},[h('button',{'aria-label':'Add to story'}),h('button',{'aria-label':'Add to your story'})],{rect:{top:60,left:0,width:390,height:100}});
+ const feed=h('main',{},[row,h('article',{},[],{rect:{top:200,width:390,height:500}})],{rect:{top:0,width:390,height:900}});
+ const p=home((body)=>{body.appendChild(h('div',{},[feed],{rect:{top:0,left:0,width:390,height:900},css:{position:'fixed'}}));});
+ assert.equal(row.getAttribute('data-native-stories-row')!==null,true,'the row under a fixed feed container is marked');
+ const sheet=h('div',{},[h('button',{'aria-label':'Add to story'}),h('button',{'aria-label':'Add to your story'})],{rect:{top:700,left:0,width:390,height:100}});
+ const q=home((body)=>{body.appendChild(h('div',{},[sheet],{css:{position:'fixed'}}));});
+ assert.equal(q.html.querySelector('[data-native-stories-row]'),null,'a floating sheet with no feed inside is still skipped');
+});
+
 test('dialogOpen is posted once per dialog on Home and post pages, at most every 2 s, never elsewhere',()=>{
  const count=p=>p.posted.filter(m=>m.type==='dialogOpen').length;
  const dialog=()=>h('div',{role:'dialog'},[h('button',{},[],{text:'Add to story'})],{rect:{top:300,left:0,width:390,height:500}});
