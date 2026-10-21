@@ -120,11 +120,11 @@ function hrefShape(href){
  const query=[];u.searchParams.forEach((v,k)=>query.push(k+'='+(k==='variant'&&VARIANT_VALUES.has(v)?v:'<v>')));
  return '/'+(out.length?out.join('/')+'/':'')+(query.length?'?'+query.join('&'):'');
 }
-const SAFE_LABELS=new Set(['Back','Home','Search','Explore','Reels','Messenger','Messages','Direct','Notifications','Activity Feed','New post','Create','Instagram','Close','Loading','Options','More','More options','Settings','Like','Unlike','Comment','Share','Share Post','Save','Remove','Down chevron icon','Chevron','Following','For you','Favorites','Stories','Carousel','Next','Previous','Go back','Play','Pause','Audio','Tags','Verified','Sponsored','Add to story','Add to your story','Add post to your story','Your story','Copy link','Share to...','Send','Cancel']);
+const SAFE_LABELS=new Set(['Back','Home','Search','Explore','Reels','Messenger','Messages','Direct','Notifications','Activity Feed','New post','Create','Instagram','Close','Loading','Options','More','More options','Settings','Like','Unlike','Comment','Share','Share Post','Save','Remove','Down chevron icon','Chevron','Following','For you','Favorites','Stories','Carousel','Next','Previous','Go back','Play','Pause','Audio','Tags','Verified','Sponsored','Add to story','Add to your story','Add post to your story','Your story','Copy link','Share to...','Send','Cancel','Share to','WhatsApp','Facebook','X','Threads','Email','Embed','Download','Report','Not interested','Unfollow','Go to post','About this account']);
 /** An aria-label if it is a known fixed UI label, else `<other>` (labels often carry usernames); null when absent. */
 function safeLabel(label){if(label==null||label==='')return null;return SAFE_LABELS.has(label)?label:'<other>';}
 const OUTLINE_SKIP=new Set(['script','style','link','meta','noscript','template']);
-const OUTLINE_UI=new Set(['Following','For you','Favorites','Add to story','Add to your story','Add post to your story','Your story','Copy link','Share to...','Share','Send','Cancel','Close','Post','Reels']);
+const OUTLINE_UI=new Set(['Following','For you','Favorites','Add to story','Add to your story','Add post to your story','Your story','Copy link','Share to...','Share','Send','Cancel','Close','Post','Reels','Share to','Messenger','WhatsApp','Facebook','X','Threads','Email','Embed','Download','Save','Report','Not interested','Unfollow','Go to post','About this account']);
 const OUTLINE_DATA=['data-native-','data-following-','data-instagram-'];
 /** Structure-only outline of a DOM tree (DEBUG diagnostics): tags, roles, allowlisted labels, our own data-* names,
     positions, rects and link shapes. Reads no other attribute and outputs no text. `env.indexes` (a Map) receives node -> index. */
@@ -192,7 +192,7 @@ function outlineSections(doc,env,bodyTree,bodyIndexes){
  // The topmost dialog (DEBUG `dialog-open` capture): share sheet, story composer, menus. Structure only, same sanitizer.
  let dialog=null;
  const dialogs=Array.from(doc.querySelectorAll('[role="dialog"]')),dialogNode=dialogs.length?dialogs[dialogs.length-1]:null;
- if(dialogNode){const r=env.rectOf(dialogNode)||{};dialog={count:dialogs.length,rect:[r.x,r.y,r.width,r.height].map(v=>Math.round(Number(v)||0)),nodes:outlineTree(dialogNode,{...env,indexes:undefined,maxNodes:120,maxDepth:8}).nodes};}
+ if(dialogNode){const r=env.rectOf(dialogNode)||{};dialog={count:dialogs.length,rect:[r.x,r.y,r.width,r.height].map(v=>Math.round(Number(v)||0)),nodes:outlineTree(dialogNode,{...env,indexes:undefined,maxNodes:200,maxDepth:14}).nodes};}
  return {main:mainTree,bars,searchField,dialog};
 }
 if(typeof module!=='undefined'&&module.exports){module.exports={classify,decide,readiness,official,opaqueRGB,surfaceRGB,avatarURL,shapePath,hrefShape,safeLabel,outlineTree,outlineMarks,outlineSections};return;}

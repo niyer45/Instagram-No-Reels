@@ -383,7 +383,7 @@ after launch with the app active and post its notifications (a missing baseline 
   Two question captures help find why a flow fails on a device (Home and post pages only; DEBUG; same files; the 6 newest
   of each are kept in addition to the 12-file budget so one cannot push out the other): `dialog-open` (400 ms after a
   `[role="dialog"]` first appears, at most one per 2 s, from the `dialogOpen` bridge message) adds a `dialog` section to
-  `page`: `{count, rect, nodes}`, the outline of the topmost dialog (depth <= 8, <= 120 nodes; fixed share-sheet labels
+  `page`: `{count, rect, nodes}`, the outline of the topmost dialog (depth <= 14, <= 200 nodes; fixed share-sheet labels
   such as "Add to story" and "Copy link" appear as `aria`/`ui`, every other label is `<other>`, no text); and
   `nav-blocked` (a navigation dropped by Bridge.js, FeedFilter or the Router; at most one per 2 s) adds a native
   `blocked` object `{shape, decision}`: the link's shape (`hrefShape` / `RouteShape`, e.g. `/reel/<code>/?igsh=<v>`, no

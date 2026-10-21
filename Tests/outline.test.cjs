@@ -141,7 +141,7 @@ test('hrefShape matches the shared shape table that Swift RouteShape is checked 
  for(const [href,shape] of rows)assert.equal(hrefShape(href),shape,href);
 });
 
-test('the dialog section outlines the topmost dialog within depth 8 and 120 nodes, with no text',()=>{
+test('the dialog section outlines the topmost dialog within depth 14 and 200 nodes, with no text',()=>{
  let deep=el('span',{},[],'Add to story');
  for(let i=0;i<14;i++)deep=el('div',{},[deep]);
  const wide=[];for(let i=0;i<200;i++)wide.push(el('div',{},[el('a',{href:'/alice/p/CODE'+i+'/'},[],'alice caption')]));
@@ -151,13 +151,13 @@ test('the dialog section outlines the topmost dialog within depth 8 and 120 node
  const sections=outlineSections(doc([menu,sheet]),env(),null,null);
  assert.equal(sections.dialog.count,2);
  assert.equal(sections.dialog.nodes[0].role,'dialog','the last (topmost) dialog is outlined');
- assert.ok(sections.dialog.nodes.length<=120);assert.ok(Math.max(...sections.dialog.nodes.map(n=>n.d))<=8);
+ assert.ok(sections.dialog.nodes.length<=200);assert.ok(Math.max(...sections.dialog.nodes.map(n=>n.d))<=14);
  assert.equal(sections.dialog.nodes[1].aria,'Add to story');
  const json=JSON.stringify(sections.dialog);
  for(const word of ['alice','caption','CODE1'])assert.ok(!json.includes(word),word);
  assert.equal(outlineSections(doc([]),env(),null,null).dialog,null);
  const small=outlineSections(doc([el('div',{role:'dialog'},[deep])]),env(),null,null).dialog.nodes;
- assert.equal(small.find(n=>n.ui==='Add to story'),undefined,'text deeper than 8 levels is cut off');
+ assert.equal(small.find(n=>n.ui==='Add to story'),undefined,'text deeper than 14 levels is cut off');
  const shallow=outlineSections(doc([el('div',{role:'dialog'},[el('button',{},[],'Add to story')])]),env(),null,null).dialog.nodes;
  assert.equal(shallow.find(n=>n.tag==='button').ui,'Add to story','fixed share-sheet labels are kept');
 });
