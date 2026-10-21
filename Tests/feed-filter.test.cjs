@@ -43,19 +43,20 @@ function fixture({path='/',search='',clock=0,lang='en',rootPresent=true,mainPres
   const statuses = [];
   const attrs = new Map(lang ? [['lang',lang]] : []);
   const root = {getAttribute:k=>attrs.get(k)||null,setAttribute:(k,v)=>attrs.set(k,v),removeAttribute:k=>attrs.delete(k),appendChild:s=>{s.parentNode=root;root.styleText=s.textContent;}};
-  const main = {contains:a=>articles.includes(a) && !a.outside,querySelectorAll:()=>articles.filter(a=>a.div).map(a=>({getAttribute:()=>'/p/ABC/',closest:()=>null,parentElement:a.linkParent||a}))};
+  const injected=[];
+  const main = {injected,appendChild:n=>{n.parentNode=main;injected.push(n);return n;},querySelector:s=>s==='[data-instagram-caught-up]'?injected.find(n=>n.attrs?.has('data-instagram-caught-up'))||null:null,contains:a=>articles.includes(a) && !a.outside,querySelectorAll:()=>articles.filter(a=>a.div).map(a=>({getAttribute:()=>'/p/ABC/',closest:()=>null,parentElement:a.linkParent||a}))};
   for(const a of articles)if(a.div)a.parentElement=main;
   const document = {
     documentElement:rootPresent?root:null,
-    createElement:()=>({textContent:'',parentNode:null}),
-    querySelector:s=>s==='main'?(mainPresent?main:null):s==='main a[href^="/accounts/login"]'?(loginLink?{}:null):s==='input[type="password"]'?(password?{}:null):null,
+    createElement:()=>{const attrs=new Map();const n={textContent:'',parentNode:null,attrs,children:[],setAttribute:(k,v)=>attrs.set(k,String(v)),getAttribute:k=>attrs.has(k)?attrs.get(k):null,appendChild:c=>{n.children.push(c);return c;},remove:()=>{const i=injected.indexOf(n);if(i>=0)injected.splice(i,1);}};return n;},
+    querySelector:s=>s==='main'?(mainPresent?main:null):s==='[data-instagram-caught-up]'?main.querySelector(s):s==='main a[href^="/accounts/login"]'?(loginLink?{}:null):s==='input[type="password"]'?(password?{}:null):null,
     querySelectorAll:s=>s==='article'?articles.filter(a=>!a.div):s==='script[type="application/json"]'?jsonScripts:s==='a[href]'?navLinks:[],addEventListener:(k,f)=>events[k]=f
   };
   const location = {protocol:'https:',port:'',hostname:'www.instagram.com',pathname:path,search,origin:'https://www.instagram.com',href:'https://www.instagram.com'+path+search};
   const bridge={};const posted=[];
   const window = {__instagramBoot:{policy:{handles:['alice'],revision:1},storiesSlot:true},__instagram:{on:(k,f)=>{(bridge[k]=bridge[k]||[]).push(f);},post:(type,p)=>{posted.push({type,...p});if(type==='status')statuses.push(p);}},addEventListener:(k,f)=>events[k]=f};
   if(fetchImpl)window.fetch=fetchImpl;window.top=window;
-  let historyCalls=0,scrollCalls=0,now=clock;const timers=[];window.innerHeight=800;window.scrollBy=()=>{scrollCalls++;};const context = {window,document,location,URL,Set,Date:{now:()=>now},setTimeout:fn=>{timers.push(fn);return timers.length;},Element:class {},queueMicrotask,MutationObserver:class {constructor(f){observer=f;}observe(){}},history:{pushState(){historyCalls++;},replaceState(){historyCalls++;}}};
+  let historyCalls=0,scrollCalls=0,now=clock;const timers=[];window.innerHeight=800;window.scrollBy=()=>{scrollCalls++;};const context = {window,document,location,URL,Set,Date:{now:()=>now,parse:s=>Date.parse(s)},setTimeout:fn=>{timers.push(fn);return timers.length;},Element:class {},queueMicrotask,MutationObserver:class {constructor(f){observer=f;}observe(){}},history:{pushState(){historyCalls++;},replaceState(){historyCalls++;}}};
   vm.runInNewContext(source,context);
   return {document,root,attrs,statuses,posted,events,window,context,setPolicy:p=>bridge.policy.forEach(f=>f(p)),refresh:()=>bridge.refresh.forEach(f=>f()),historyCalls:()=>historyCalls,scrollCalls:()=>scrollCalls,runTimer:async()=>{now+=1500;const fn=timers.shift();if(fn)fn();await Promise.resolve();},mutate:async()=>{observer();await Promise.resolve();}};
 }
@@ -65,12 +66,14 @@ function post(author='alice',text='A photo') {
     contains:a=>false,
     get textContent(){return this.text;},
     getAttribute:k=>attributes.get(k)||null,setAttribute:(k,v)=>attributes.set(k,v),
-    querySelectorAll(s) {if(s==='header,[data-testid="sponsored-label"],[aria-label="Sponsored"]')return this.disclosure?[{querySelectorAll:()=>[{textContent:this.disclosure}]}]:[];if(s==='a[href]'||s==='a[href*="/p/"]') return [{getAttribute:()=>'/p/ABC/'},{getAttribute:()=>'/p/ABC/'}];if(s==='h2 a[href],h3 a[href]'&&this.heading)return [{getAttribute:()=>'/'+this.author+'/',textContent:this.author,closest:()=>null}];return [];},
+    querySelectorAll(s) {if(s==='span,a')return (this.labels||[]).map(t=>typeof t==='string'?{textContent:t,closest:()=>null}:{textContent:t.text,closest:()=>t.inComments?{}:null});if(s==='header,[data-testid="sponsored-label"],[aria-label="Sponsored"]')return this.disclosure?[{querySelectorAll:()=>[{textContent:this.disclosure}]}]:[];if(s==='a[href]'||s==='a[href*="/p/"]') return [{getAttribute:()=>'/p/ABC/'},{getAttribute:()=>'/p/ABC/'}];if(s==='h2 a[href],h3 a[href]'&&this.heading)return [{getAttribute:()=>'/'+this.author+'/',textContent:this.author,closest:()=>null}];return [];},
     querySelector(s) {
       if(s==='img,video,a[href*="/p/"]'||s==='img,video')return {};
       if(s==='header,h2,h3')return this.header||this.heading?{}:null;
       if(s==='header') return this.header?{querySelectorAll:()=>[{getAttribute:()=>'/'+this.author+'/',textContent:this.author,closest:()=>null}],contains:()=>true}:null;
       if(s==='video') return this.video?{}:null;
+      if(s==='time[datetime]') return this.datetime?{getAttribute:k=>k==='datetime'?this.datetime:null}:null;
+      if(s==='[aria-label="Reel"],[aria-label="Reels"],[aria-label="Clip"]') return this.reelGlyph?{}:null;
       return this.reel?{}:null;
     }};
   return p;
@@ -427,7 +430,7 @@ test('two-day window still hides old posts on the Following feed and diagnostics
  const now=Date.now()/1000;
  assert.equal(classify({authors:['alice']},new Set(),{author:'alice',following:true,takenAt:now-3*86400},false,true),false);
  assert.equal(classify({authors:['alice']},new Set(),{author:'alice',following:true,takenAt:now-3600},false,true),true);
- const old=post(),fresh=post();// following:false keeps the caught-up banner (a DOM feature) out of this mock
+ const old=post(),fresh=post();// following:false: Instagram decides membership here, so an explicit negative still dates the card
  const f=fixture({search:FOLLOWING,clock:1e12,articles:[old],jsonScripts:[{textContent:rec({taken_at:1,is_following:false})}]});
  assert.equal(old.getAttribute('data-following-approved'),'no');
  assert.equal(f.window.__instagramFilterDiagnostics().cards[0].reason,'older-than-window');
@@ -439,4 +442,48 @@ test('diagnostics card reasons on the Following feed: approved, blocked-ad, bloc
  const r=post();r.reel=true;assert.equal(fixture({search:FOLLOWING,articles:[r]}).window.__instagramFilterDiagnostics().cards[0].reason,'blocked-reel');
  const d=post();d.disclosure='Sponsored';assert.equal(fixture({search:FOLLOWING,articles:[d]}).window.__instagramFilterDiagnostics().cards[0].reason,'blocked-ad');
  const h=post('bob');assert.equal(fixture({articles:[h]}).window.__instagramFilterDiagnostics().cards[0].reason,'following-unavailable');
+});
+
+// Following-feed structural signals: a card shows there without matched metadata, so the card itself must carry ad, Reel and age evidence.
+test('Following feed hides a headerless card whose disclosure label sits outside a header; comment text and home variant are unaffected',()=>{
+ const ad=post();ad.header=false;ad.labels=['alice','Sponsored'];const sug=post();sug.header=false;sug.labels=['Suggested posts'];
+ const comment=post();comment.header=false;comment.labels=[{text:'Sponsored',inComments:true}];const caption=post();caption.header=false;caption.labels=['I hate sponsored posts'];
+ const f=fixture({search:FOLLOWING,articles:[ad,sug,comment,caption]});
+ assert.equal(ad.getAttribute('data-following-approved'),'no');assert.equal(sug.getAttribute('data-following-approved'),'no');
+ assert.equal(comment.getAttribute('data-following-approved'),'yes');assert.equal(caption.getAttribute('data-following-approved'),'yes');
+ assert.equal(f.window.__instagramFilterDiagnostics().cards[0].reason,'blocked-ad');
+ const home=post();home.labels=['Suggested posts'];fixture({articles:[home]});assert.equal(home.getAttribute('data-following-approved'),'yes');// non-Following feeds read header labels only, as before
+});
+test('Following feed hides an unmatched /p/ video card that carries a Reel glyph; a plain unmatched video still shows',()=>{
+ for(const label of ['Reel','Reels','Clip']){
+  const r=post();r.video=true;r.reelGlyph=label;const f=fixture({search:FOLLOWING,articles:[r]});
+  assert.equal(r.getAttribute('data-following-approved'),'no');assert.equal(r.getAttribute('data-following-pending'),'no');
+  assert.equal(f.window.__instagramFilterDiagnostics().cards[0].reason,'blocked-reel');
+ }
+ const v=post();v.video=true;fixture({search:FOLLOWING,articles:[v]});assert.equal(v.getAttribute('data-following-approved'),'yes');
+});
+test('Following feed hides a card with several post codes when any of their records is an ad or a Reel',()=>{
+ const two=()=>{const a=post();const prior=a.querySelectorAll;a.querySelectorAll=function(s){if(s==='a[href]')return [{getAttribute:()=>'/p/ABC/'},{getAttribute:()=>'/p/DEF/'}];return prior.call(this,s);};return a;};
+ const clean=two();fixture({search:FOLLOWING,articles:[clean],jsonScripts:[{textContent:JSON.stringify([{code:'ABC',user:{username:'alice'}},{code:'DEF',user:{username:'bob'}}])}]});
+ assert.equal(clean.getAttribute('data-following-approved'),'yes');
+ for(const bad of [{product_type:'clips'},{is_ad:true}]){
+  const a=two();const f=fixture({search:FOLLOWING,articles:[a],jsonScripts:[{textContent:JSON.stringify([{code:'ABC',user:{username:'alice'}},{code:'DEF',user:{username:'bob'},...bad}])}]});
+  assert.equal(a.getAttribute('data-following-approved'),'no',JSON.stringify(bad));
+  assert.equal(f.window.__instagramFilterDiagnostics().cards[0].reason,bad.is_ad?'blocked-ad':'blocked-reel');
+ }
+});
+test('Following feed applies the two-day window to unmatched cards from their own time element and shows the caught-up card',()=>{
+ const old=post();old.datetime='2001-09-06T01:46:40.000Z';const fresh=post();fresh.datetime='2001-09-09T01:00:00.000Z';
+ const f=fixture({search:FOLLOWING,clock:1e12,articles:[fresh,old]});// now = 2001-09-09T01:46:40Z
+ assert.equal(fresh.getAttribute('data-following-approved'),'yes');
+ assert.equal(old.getAttribute('data-following-approved'),'no');assert.equal(old.getAttribute('data-following-pending'),'no');
+ assert.equal(f.window.__instagramFilterDiagnostics().cards[1].reason,'older-than-window');
+ const banner=f.document.querySelector('[data-instagram-caught-up]');assert.ok(banner);
+ banner.children.find(n=>n.getAttribute('data-part')==='older').onclick();
+ assert.equal(old.getAttribute('data-following-approved'),'yes');assert.equal(f.document.querySelector('[data-instagram-caught-up]'),null);
+ const undated=post();const g=fixture({search:FOLLOWING,clock:1e12,articles:[undated]});
+ assert.equal(undated.getAttribute('data-following-approved'),'yes');assert.equal(g.document.querySelector('[data-instagram-caught-up]'),null);
+ const bad=post();bad.datetime='not a date';fixture({search:FOLLOWING,clock:1e12,articles:[bad]});assert.equal(bad.getAttribute('data-following-approved'),'yes');
+ const home=post();home.datetime='2001-09-06T01:46:40.000Z';const h=fixture({clock:1e12,articles:[home]});// non-Following feeds keep the metadata-only cutoff
+ assert.equal(home.getAttribute('data-following-approved'),'yes');assert.equal(h.document.querySelector('[data-instagram-caught-up]'),null);
 });
