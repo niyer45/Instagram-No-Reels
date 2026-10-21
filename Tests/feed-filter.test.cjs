@@ -37,7 +37,7 @@ test('original profile, inbox, stories and settings navigation preserved',()=>{
 const vm = require('node:vm');
 const fs = require('node:fs');
 const source = fs.readFileSync(require.resolve('../Resources/FeedFilter.js'),'utf8');
-function fixture({path='/',lang='en',rootPresent=true,mainPresent=true,password=false,articles=[],jsonScripts=[],fetchImpl=null,navLinks=[],loginLink=false}={}) {
+function fixture({path='/',search='',clock=0,lang='en',rootPresent=true,mainPresent=true,password=false,articles=[],jsonScripts=[],fetchImpl=null,navLinks=[],loginLink=false}={}) {
   let observer;
   const events = {};
   const statuses = [];
@@ -51,11 +51,11 @@ function fixture({path='/',lang='en',rootPresent=true,mainPresent=true,password=
     querySelector:s=>s==='main'?(mainPresent?main:null):s==='main a[href^="/accounts/login"]'?(loginLink?{}:null):s==='input[type="password"]'?(password?{}:null):null,
     querySelectorAll:s=>s==='article'?articles.filter(a=>!a.div):s==='script[type="application/json"]'?jsonScripts:s==='a[href]'?navLinks:[],addEventListener:(k,f)=>events[k]=f
   };
-  const location = {protocol:'https:',port:'',hostname:'www.instagram.com',pathname:path,origin:'https://www.instagram.com',href:'https://www.instagram.com'+path};
+  const location = {protocol:'https:',port:'',hostname:'www.instagram.com',pathname:path,search,origin:'https://www.instagram.com',href:'https://www.instagram.com'+path+search};
   const bridge={};const posted=[];
   const window = {__instagramBoot:{policy:{handles:['alice'],revision:1},storiesSlot:true},__instagram:{on:(k,f)=>{(bridge[k]=bridge[k]||[]).push(f);},post:(type,p)=>{posted.push({type,...p});if(type==='status')statuses.push(p);}},addEventListener:(k,f)=>events[k]=f};
   if(fetchImpl)window.fetch=fetchImpl;window.top=window;
-  let historyCalls=0,scrollCalls=0,now=0;const timers=[];window.innerHeight=800;window.scrollBy=()=>{scrollCalls++;};const context = {window,document,location,URL,Set,Date:{now:()=>now},setTimeout:fn=>{timers.push(fn);return timers.length;},Element:class {},queueMicrotask,MutationObserver:class {constructor(f){observer=f;}observe(){}},history:{pushState(){historyCalls++;},replaceState(){historyCalls++;}}};
+  let historyCalls=0,scrollCalls=0,now=clock;const timers=[];window.innerHeight=800;window.scrollBy=()=>{scrollCalls++;};const context = {window,document,location,URL,Set,Date:{now:()=>now},setTimeout:fn=>{timers.push(fn);return timers.length;},Element:class {},queueMicrotask,MutationObserver:class {constructor(f){observer=f;}observe(){}},history:{pushState(){historyCalls++;},replaceState(){historyCalls++;}}};
   vm.runInNewContext(source,context);
   return {document,root,attrs,statuses,posted,events,window,context,setPolicy:p=>bridge.policy.forEach(f=>f(p)),refresh:()=>bridge.refresh.forEach(f=>f()),historyCalls:()=>historyCalls,scrollCalls:()=>scrollCalls,runTimer:async()=>{now+=1500;const fn=timers.shift();if(fn)fn();await Promise.resolve();},mutate:async()=>{observer();await Promise.resolve();}};
 }
@@ -368,4 +368,75 @@ test('Notifications and settings pages report their status without login, change
  assert.equal(fixture({path:'/accounts/password/reset/',password:true}).statuses.at(-1).state,'login');
  assert.equal(fixture({path:'/accounts/login/'}).statuses.at(-1).state,'login');
  assert.equal(fixture({path:'/alice/',password:true}).statuses.at(-1).state,'login');
+});
+
+// Following-feed policy: Instagram decides membership; only ads, suggestions, Reels and the two-day window hide a card.
+const FOLLOWING='?variant=following';
+const rec=(extra={})=>JSON.stringify({code:'ABC',user:{username:'alice'},...extra});
+test('Following feed shows cards with no metadata, no author and no follow evidence',()=>{
+ assert.equal(classify({authors:['bob']},new Set(),null,false,true),true);
+ assert.equal(classify({authors:[]},new Set(),null,false,true),true);
+ assert.equal(classify({authors:['alice','bob'],ambiguousIdentity:true},new Set(),null,false,true),true);
+ assert.equal(classify({authors:['alice']},new Set(),{author:'carol',following:null},false,true),true);
+ const a=post('bob');const f=fixture({search:FOLLOWING,articles:[a]});f.setPolicy({handles:[]});
+ assert.equal(a.getAttribute('data-following-approved'),'yes');
+ const b=post();b.header=false;fixture({search:FOLLOWING,articles:[b]});assert.equal(b.getAttribute('data-following-approved'),'yes');
+});
+test('Following feed shows video cards with no metadata and unknownVideo metadata',()=>{
+ assert.equal(classify({authors:['alice'],video:true},new Set(),null,false,true),true);
+ const r=new Map();ingest({code:'ABC',user:{username:'alice'},media_type:2,product_type:'something'},r);assert.equal(r.get('ABC').unknownVideo,true);
+ assert.equal(classify({authors:['alice'],video:true},new Set(),r.get('ABC'),false,true),true);
+ const a=post('bob');a.video=true;fixture({search:FOLLOWING,articles:[a]});assert.equal(a.getAttribute('data-following-approved'),'yes');
+});
+test('Following feed shows explicit following:false metadata (Instagram already decided membership); home variant hides it',()=>{
+ const m={author:'alice',following:false};
+ assert.equal(classify({authors:['alice']},new Set(['alice']),m,false,true),true);
+ assert.equal(classify({authors:['alice']},new Set(['alice']),m,false,false),false);
+ const a=post();fixture({search:FOLLOWING,articles:[a],jsonScripts:[{textContent:rec({is_following:false})}]});assert.equal(a.getAttribute('data-following-approved'),'yes');
+});
+test('Following feed still hides ads, suggested posts and Reels',()=>{
+ for(const f of [{reel:true},{promotional:true},{suggested:true}])assert.equal(classify({authors:['alice'],...f},new Set(['alice']),{author:'alice',following:true},false,true),false);
+ for(const obj of [{is_ad:true},{is_suggested:true},{product_type:'clips'},{product_type:'reels'},{ad_id:'123'}]){
+  const r=new Map();ingest({code:'ABC',user:{username:'alice',is_following:true},...obj},r);
+  assert.equal(classify({authors:['alice']},new Set(['alice']),r.get('ABC'),false,true),false,JSON.stringify(obj));
+ }
+ const r=new Map();ingest({ad_media:{code:'ABC',user:{username:'alice'}}},r);assert.equal(classify({authors:['alice']},new Set(),r.get('ABC'),false,true),false);
+ const reel=post();reel.reel=true;const ad=post();ad.disclosure='Sponsored';const sug=post();sug.disclosure='Suggested for you';
+ const f=fixture({search:FOLLOWING,articles:[reel,ad,sug]});
+ for(const p of [reel,ad,sug])assert.equal(p.getAttribute('data-following-approved'),'no');
+ assert.equal(f.statuses.at(-1).shown,0);
+});
+test('home variant and other feeds keep the evidence requirement',()=>{
+ for(const search of ['','?variant=home']){
+  const a=post('bob');const b=post();b.video=true;const c=post();
+  const f=fixture({search,articles:[a,b,c]});
+  assert.equal(a.getAttribute('data-following-approved'),'no');assert.equal(b.getAttribute('data-following-approved'),'no');assert.equal(c.getAttribute('data-following-approved'),'yes');
+  f.setPolicy({handles:[]});assert.equal(f.statuses.at(-1).state,'needsFollowing');
+ }
+ assert.equal(classify({authors:['bob']},new Set(['alice']),null,false,false),false);
+ assert.equal(classify({authors:['alice'],video:true},new Set(['alice']),null,false,false),false);
+});
+test('Following feed reports filtered, never needsFollowing or following-unavailable',()=>{
+ const a=post('bob');const b=post();const f=fixture({search:FOLLOWING,articles:[a,b],jsonScripts:[{textContent:rec()}]});
+ f.setPolicy({handles:[]});
+ const s=f.statuses.at(-1);assert.equal(s.state,'filtered');assert.equal(s.reason,'filtered');assert.equal(s.shown,2);
+ const c=post();c.header=false;const g=fixture({search:FOLLOWING,articles:[c]});assert.equal(g.statuses.at(-1).state,'filtered');assert.notEqual(g.statuses.at(-1).reason,'unrecognized-posts');
+ const r=post();r.reel=true;const h=fixture({search:FOLLOWING,articles:[r]});h.setPolicy({handles:[]});assert.equal(h.statuses.at(-1).state,'filtered');
+});
+test('two-day window still hides old posts on the Following feed and diagnostics label it older-than-window',()=>{
+ const now=Date.now()/1000;
+ assert.equal(classify({authors:['alice']},new Set(),{author:'alice',following:true,takenAt:now-3*86400},false,true),false);
+ assert.equal(classify({authors:['alice']},new Set(),{author:'alice',following:true,takenAt:now-3600},false,true),true);
+ const old=post(),fresh=post();// following:false keeps the caught-up banner (a DOM feature) out of this mock
+ const f=fixture({search:FOLLOWING,clock:1e12,articles:[old],jsonScripts:[{textContent:rec({taken_at:1,is_following:false})}]});
+ assert.equal(old.getAttribute('data-following-approved'),'no');
+ assert.equal(f.window.__instagramFilterDiagnostics().cards[0].reason,'older-than-window');
+ const g=fixture({search:FOLLOWING,clock:1e12,articles:[fresh],jsonScripts:[{textContent:rec({taken_at:1e9-60})}]});
+ assert.equal(fresh.getAttribute('data-following-approved'),'yes');assert.equal(g.window.__instagramFilterDiagnostics().cards[0].reason,'approved');
+});
+test('diagnostics card reasons on the Following feed: approved, blocked-ad, blocked-reel',()=>{
+ const a=post('bob');const f=fixture({search:FOLLOWING,articles:[a]});assert.equal(f.window.__instagramFilterDiagnostics().cards[0].reason,'approved');
+ const r=post();r.reel=true;assert.equal(fixture({search:FOLLOWING,articles:[r]}).window.__instagramFilterDiagnostics().cards[0].reason,'blocked-reel');
+ const d=post();d.disclosure='Sponsored';assert.equal(fixture({search:FOLLOWING,articles:[d]}).window.__instagramFilterDiagnostics().cards[0].reason,'blocked-ad');
+ const h=post('bob');assert.equal(fixture({articles:[h]}).window.__instagramFilterDiagnostics().cards[0].reason,'following-unavailable');
 });
