@@ -7,8 +7,8 @@ Sign in with your existing Instagram account through Instagram’s own page. Thi
 ## Features
 
 - **Native shell:** Instagram-style native tab bar, headers, push navigation with swipe-back, skeleton loading and pull-to-refresh around Instagram’s own pages.
-- **Following-first Home:** native Home header with Instagram’s wordmark, and Instagram’s Stories tray above posts from followed accounts.
-- **Local content filters:** hides recognized Reels, ads, suggestions, and Home posts without followed-account evidence.
+- **Following-first Home:** native Home header with Instagram’s wordmark, and Instagram’s Stories tray above posts from Instagram’s own Following feed, which Instagram limits to accounts you follow.
+- **Local content filters:** on the Following feed, hides ads, suggested posts, Reels and posts past the two-day cutoff; every other post shows. Other feeds keep an evidence-based rule that requires confirmation that you follow the author.
 - **Stories and Messages:** Instagram’s signed-in story viewer opens full screen; Notifications push from the Home header heart (with an unread dot).
 - **Message notifications (optional, off by default):** a local notification for a new direct message, found by a background check of the inbox. iOS decides when it runs, so they are delayed, not instant.
 - **Account search:** preserves Instagram’s search bar and account results while hiding the Explore media grid. A native caught-up state appears only while Search is idle and disappears on interaction or focus.
@@ -20,7 +20,7 @@ Sign in with your existing Instagram account through Instagram’s own page. Thi
 - **Light on memory:** only the top four pages of a stack keep their web documents, and pages that are off screen unload on a memory warning; both come back from a snapshot when shown again, Home at its previous scroll position where possible.
 - **Dark appearance:** original dark app icon, launch graphics, and backgrounds matched to Instagram’s page.
 
-Home initially filters recognized posts older than two days. An inline caught-up message can reveal older followed-account content, and downward scrolling near the cutoff can continue into older posts. Intentional profile and post-detail browsing does not apply Home’s following-membership or two-day restriction.
+Home initially filters recognized posts older than two days. An inline caught-up message can reveal older followed-account content, and downward scrolling near the cutoff can continue into older posts. Intentional profile and post-detail browsing does not apply Home’s two-day restriction or non-Following feeds’ membership check.
 
 ## Requirements
 
@@ -64,7 +64,9 @@ The shell is UIKit; Instagram’s mobile website supplies only the content. Each
 
 `Resources/FeedFilter.js` runs at document start. It observes Instagram’s initial JSON and existing fetch/XHR responses, associates post cards with author and follow-state evidence, and filters individual cards. It does not construct guessed private API requests or read passwords or session cookies.
 
-Follow evidence includes `friendship_status.following`, `is_following`, and `followed_by_viewer`. Follower counts and `follows_viewer` do not establish that you follow an account. If the page does not supply sufficient membership data, **Content filters** (from Instagram’s settings menu or the Profile menu) can import a `following.json` file from your Instagram information export as a fallback. Fresh negative follow evidence takes priority over an older import.
+On Instagram’s own Following feed, the app shows every post except ads, suggested posts and Reels, without requiring follow evidence or full post data. Posts older than two days sit behind the “You’re all caught up” card until you ask for older posts.
+
+On non-Following feeds, Instagram’s data or the imported list must still confirm that you follow the author. Follow evidence includes `friendship_status.following`, `is_following`, and `followed_by_viewer`. Follower counts and `follows_viewer` do not establish that you follow an account. If the page does not supply sufficient membership data, **Content filters** (from Instagram’s settings menu or the Profile menu) can import a `following.json` file from your Instagram information export as a fallback. Fresh negative follow evidence takes priority over an older import. The following-list import only matters on non-Following feeds.
 
 The login session remains in WebKit’s persistent website data store. There is no app-owned credential form or remote application backend. Design rules and the bridge protocol are in [`docs/DIRECTION.md`](docs/DIRECTION.md); Instagram markup assumptions are in [`docs/DOM-NOTES.md`](docs/DOM-NOTES.md).
 
@@ -98,7 +100,8 @@ The simulator cannot sign in to Instagram, so signed-in behaviour is validated o
 ## Limitations
 
 - Instagram can change its website, markup, routing, and response schemas. Filtering and presentation may need updates.
-- Recognition is evidence-based rather than a guarantee that every ad, Reel, or recommendation format is covered. Unrecognized posts and videos can be hidden conservatively.
+- Recognition is evidence-based rather than a guarantee that every ad, Reel, or recommendation format is covered. On non-Following feeds, unrecognized posts and videos can be hidden conservatively.
+- On the Following feed, an occasional Reel that Instagram does not label as one may slip through.
 - The caught-up feed marker requires dated eligible content. Missing timestamps or a network failure do not prove that all recent posts have loaded.
 - Pagination uses Instagram’s existing page handlers and available content; it cannot guarantee an unlimited feed.
 - Live tab state is retained within the running app session. A terminated web-content process reloads the page behind its skeleton, and a page unloaded to save memory reloads when shown; Instagram may then show newer content than before, and the scroll position is restored only as far as the reloaded page reaches.

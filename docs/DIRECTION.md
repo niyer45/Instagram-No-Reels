@@ -37,11 +37,18 @@ And must get:
   responses the page already made. Keep this policy.
 - **No credential handling.** Login is Instagram's own page inside a web view, in the
   default persistent `WKWebsiteDataStore`. Never read cookies or passwords.
-- **Keep the filter.** `Resources/FeedFilter.js` and its 53 node tests are the proven
-  core. Change its DOM-chrome handling (bottom nav, messages link, web header tricks) only
-  to *remove* it when native chrome replaces it. Filtering logic changes need new tests.
+- **Keep the filter.** Keep the filter and its tests, observe-only. On the Following feed,
+  Instagram decides membership: hide only ads, suggestions, Reels and posts past the
+  two-day cutoff, and never hide for missing author, follow evidence, metadata or video
+  status. Other feeds keep the evidence-based rule. Reels, ads and suggested posts must
+  never show.
 - iOS 17+, Swift 5, Xcode 27. Bundle id `com.local.following`, target/scheme `Following`,
   display name "Instagram". Do not change these.
+
+**Decision (2026-10-21): the Following feed is not evidence-gated.** Device diagnostics
+showed only 1 of 7 Following-feed cards matched a data record, and unmatched video cards
+were hidden, so friends' posts went missing. The owner chose completeness over
+conservative hiding. Non-Following feeds keep the evidence-based rule.
 - Portrait iPhone first. iPad must not crash but is not a design target.
 - Dark appearance is the primary design target (matches the shipped icon and splash);
   light must still work because Instagram's page may render light.

@@ -98,14 +98,16 @@ Seen: logged-out bars use `/u/profile/` (classified `other`, never reported).
 Inherited: signed-in bars link the own profile. Fallback: Profile tab waits on its
 skeleton; the last username is cached between launches.
 
-## FeedFilter.js assumptions (unchanged from 0.4.x; filtering logic not modified)
+## FeedFilter.js assumptions
+
+On the Following feed only ads, suggested posts, Reels and posts past the two-day cutoff are hidden; a missing author, follow evidence, metadata or video status never hides a card. The rows below describe the evidence-based rule that other feeds still use.
 
 | What | Selector | Fallback |
 | --- | --- | --- |
 | Post candidates | `main` + top-level `article` containing `img, video, a[href*="/p/"]`; modern markup: climb from `main a[href*="/p/"]` to the smallest ancestor with media and one author | Posts without recognisable structure stay hidden (`unrecognized-posts`). |
-| Author | `header a[href]`, `h2 a[href]`, `h3 a[href]`, or the first attribution row of profile links whose text equals the handle | Card hidden. |
+| Author | `header a[href]`, `h2 a[href]`, `h3 a[href]`, or the first attribution row of profile links whose text equals the handle | Non-Following feeds: card hidden. Following feed: card still shows. |
 | Ads / suggestions | Labels in `header`, `[data-testid="sponsored-label"]`, `[aria-label="Sponsored"]` | Response metadata (`is_ad`, `is_suggested`) still hides them. |
-| Membership data | `script[type="application/json"]` and existing fetch/XHR JSON responses | Import `following.json`. |
+| Membership data | `script[type="application/json"]` and existing fetch/XHR JSON responses | Import `following.json` (non-Following feeds only; the Following feed does not need it). |
 | Reels | `a[href*="/reel/"]`, `a[href^="/reels"]`, `a[href^="/tv/"]`, `button[aria-label="Reels"]`, `product_type` clips/reels | Router and `InstagramNavigation` still block Reels routes. |
 | Older posts | Controls whose text is "View older posts"/"See older posts" | Caught-up card's own button. |
 | Controls entry | `[role="menu"]` whose text mentions "Settings" or "Your activity" gets a "Following filter settings" button → `openControls` | Profile header menu → Content filters. |

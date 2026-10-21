@@ -37,7 +37,11 @@ The simulator checks used the logged-out pages and `Tests/fixtures/home-feed.htm
 ### Feed
 
 - [ ] The Stories tray shows your stories row and scrolls horizontally; a vertical drag that starts on the tray scrolls the feed, and a horizontal drag scrolls the tray only. Grey rings show while it loads.
-- [ ] Filtering is unchanged from 0.4.5: no Reels, ads or suggested posts; posts older than two days stop at the caught-up card; "View older posts" and scrolling past the card continue into older posts.
+- [ ] No Reels, ads or suggested posts; posts older than two days stop at the caught-up card; "View older posts" and scrolling past the card continue into older posts.
+- [ ] Every post from followed accounts appears (compare with Instagram's app for the same hour).
+- [ ] No ads, suggested posts or Reels appear.
+- [ ] A video post from a followed account appears and plays.
+- [ ] Content filters shows state "filtered" and never asks to import a following list on Home.
 - [ ] The caught-up card shows a gradient ring with a check, "You're all caught up", grey "You've seen all new posts from the past 2 days." and a blue "View older posts" that loads older posts.
 - [ ] Post cards: edge to edge with no card border; 32 pt round avatar; bold 14 pt username followed by grey "• 2h"; 24 pt heart, comment and share on the left, bookmark on the right; bold like count; grey "View all N comments"; small grey timestamp ("2 hours ago"). Note any element that still looks like the website (and which one); selectors are in DOM-NOTES "Home feed skin".
 - [ ] No "Add a comment…" field under feed posts; the comment glyph still opens comments.
