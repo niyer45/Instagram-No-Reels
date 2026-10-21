@@ -205,16 +205,23 @@ structure can be pulled from a device and these rules corrected.
 | Readiness | `inboxState` is posted when `document.readyState` is `complete` (or `ready` was sent), not on `ready` itself, and from a dedicated `MutationObserver` and window `load` (the shared chrome scan runs from `requestAnimationFrame`, which a hidden web view may not get) | n/a | The probe times out after 20 s and changes nothing. |
 | Throttle | At most one scan per second; a post only when the thread list (ids, flags, names) differs from the last post of this document; leaving the inbox route forgets it | n/a (ours) | — |
 
-## Share sheet and story composer (post -> "Add to story")
+## Share sheet (no story repost)
 
-Never observed (the owner's session cannot be reproduced in the simulator): everything here is **assumed** until a
-`dialog-open` capture (`page.dialog`) is pulled from a device.
+Observed on the owner's device (sanitized dialog capture, 2026-10-21): a post's Share sheet on Instagram's mobile website is a `role=dialog` named "Share" containing, in order:
+
+- a Close control;
+- a search field;
+- a contact grid of 20 cells ("Share to" people);
+- an `hr`;
+- a horizontally scrolling action row of nine items: Copy link (button), WhatsApp (app-scheme link), Messenger (app-scheme link), Facebook (external link), one unidentified app-scheme link, Threads (external link), Email (mailto-style scheme), X (external link) and one final unidentified button.
+
+There is no "Add to story" or "Add to your story" item, and the app hides nothing in the dialog. Instagram's website has no story composer, so reposting a post to a story is not available in this app (it never calls Instagram's private API). The rows below that mention "Add to story" were written before this capture; the sheet items they name were assumptions, and only the structure above is observed.
 
 | What | Selector / rule | Found | Fallback when it fails |
 | --- | --- | --- | --- |
-| Share sheet / composer dialog | `[role="dialog"]` on a Home or post page; reported by `scanDialogs` as `dialogOpen` (<= 1 per 2 s) | assumed | If the sheet is not marked as a dialog, the capture never fires; the `bars` section still shows fixed overlays. |
+| Share sheet dialog | `[role="dialog"]` on a Home or post page; reported by `scanDialogs` as `dialogOpen` (<= 1 per 2 s) | seen (structure above) | The `bars` section still shows fixed overlays. |
 | Dialogs are not page chrome | `findTopBar` and `findTabBar` skip seeds inside `[role="dialog"],[aria-modal="true"]` (a sheet's full-width Back header or an explore link inside it was hidable as the top bar or tab bar) | ours | Test: "a share sheet dialog with a full-width Back header is not taken for the top bar". |
 | Not the stories row | `scanStoriesRow` ignores items inside `[role="dialog"]`, `[role="menu"]`, `[aria-modal="true"]` or under a `position: fixed` ancestor that does not also contain `main` or an `article` (a fixed scroll container holding the feed is not an overlay; the ancestor walk, 12 levels, stops at `main`): two "Add to story" buttons in a floating sheet used to qualify as a 40-190 px row and were hidden on Home (`html[data-native-stories="tray"]`) | ours | Tests: "Add to story buttons in a floating sheet are not the stories row, in a dialog or not"; "a genuine stories row inside a fixed scroll container that also holds the feed is still marked". |
 | App-install prompt hiding | `tabIsAppPrompt` needs text matching "in the app" / "Open Instagram" style phrases and no input/form; a share sheet ("Add to story", "Copy link") does not match | verified by reading | Unchanged. |
 | Reels button blocker | FeedFilter click handler blocks buttons whose `aria-label` is exactly `Reels`; no share-sheet item has that label | assumed | A match would show up as `nav-blocked` with decision `reels-button`. |
-| Story composer URL | `/create/...` (kind `create`) or `/stories/create/` (kind `stories`); both full screen; unknown which one Instagram uses | unknown | `nav-blocked` / `dialog-open` captures; fixtures cover both. |
+| Composer URL | `/create/select/` is the website's new-post picker (kind `create`, full screen). `/create/story/` and `/stories/create/` are defensive only: the website has no story composer, so nothing is known to navigate there | `/create/select/` assumed; story rows defensive | `nav-blocked` captures; fixtures cover the routes. |

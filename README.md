@@ -104,6 +104,7 @@ The simulator cannot sign in to Instagram, so signed-in behaviour is validated o
 - Live tab state is retained within the running app session. A terminated web-content process reloads the page behind its skeleton, and a page unloaded to save memory reloads when shown; Instagram may then show newer content than before, and the scroll position is restored only as far as the reloaded page reaches.
 - Message notifications depend on iOS background app refresh: iOS runs the check every so often (usually within an hour, sometimes much later or not at all, and not after a force quit or with Background App Refresh or Low Power Mode off). They are not instant, and detection depends on Instagram’s inbox markup.
 - Instagram’s website has no create-post route, so the native Create tab is replaced by Messages.
+- Reposting a post to your story is not available: Instagram’s website does not offer it, and the app never calls Instagram’s private API, so this stays a native-app-only feature.
 
 ## Project layout
 

@@ -155,16 +155,16 @@ Phase 2 decisions (changed with the code; rationale in each line):
   dismisses through its route change. The page underneath never leaves the hierarchy, so it is
   not reloaded. Home's story viewer uses the same container (§3.3), so there is one modal
   mechanism.
-- **Story composer** (`/create/...`, also reached from a post's share sheet "Add to story"): presented full screen
+- **Story composer** (`/create/...`; `/create/select/` is the website's new-post picker): presented full screen
   like `stories`, but its container ignores the swipe-down dismissal (`Route.dismissesBySwipe`), because dragging,
   drawing and resizing inside the composer are finger gestures; it closes through Instagram's own close control (a
   route change, which the Router turns into a dismissal) or the left-edge swipe. A full-screen page that navigates to
   another full-screen kind (composer -> story viewer) is replaced, not stacked under a second modal, and a modal that
   returns to the page it was presented over (composer -> the same post) only dismisses instead of pushing a copy.
   A new web view loads the composer's URL, so a flow that depends on in-memory state of the originating page cannot
-  continue there; whether Instagram's share-to-story needs that is unknown until the `dialog-open` and `nav-blocked`
-  captures (§4) are pulled from a device. Reel-type posts route to `/reel/` URLs, which are dropped by design, so
-  sharing one to a story is dropped too.
+  continue there.
+  The website has no story composer (the share sheet has no "Add to story" item; DOM-NOTES "Share sheet"), so the
+  `/create/story/` and `/stories/create/` route rows are defensive only; the handling stays because `/create/select/` uses it.
 - **External links** (other sites) open in `SFSafariViewController` over the current page, as
   in the native app; Instagram's `l.instagram.com` link shim is unwrapped to its target;
   `mailto:`/`tel:` go to the system; App Store, `instagram://` and other app redirects and
@@ -388,7 +388,7 @@ after launch with the app active and post its notifications (a missing baseline 
   `nav-blocked` (a navigation dropped by Bridge.js, FeedFilter or the Router; at most one per 2 s) adds a native
   `blocked` object `{shape, decision}`: the link's shape (`hrefShape` / `RouteShape`, e.g. `/reel/<code>/?igsh=<v>`, no
   ids, handles or query values; `<none>` for a button) and the decision kind (`bridge-block`, `feed-pushstate`,
-  `reels-button`, `router-reels`, `router-external`). Owner steps: open a post's share sheet, tap "Add to story", wait
+  `reels-button`, `router-reels`, `router-external`). Owner steps: open a post's share sheet, wait
   3 s, then pull `Library/Caches/page-outline-dialog-open-*.json` and `page-outline-nav-blocked-*.json`.
   Message notifications add `inbox-ready` (the Messages tab's page when ready, and every watcher run; §3.7), same files and retention.
 - Commits: small, imperative subject, body says *why*. Run the checks in §5 before every
