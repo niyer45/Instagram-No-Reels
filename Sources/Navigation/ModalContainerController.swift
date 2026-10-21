@@ -11,6 +11,8 @@ final class ModalContainerController: UIViewController, UIGestureRecognizerDeleg
     /// Replaces the plain dismissal at the end of a downward swipe (e.g. to let the page close its viewer first).
     /// The container has already animated away when this runs; call `dismiss(animated: false)` when done.
     var dismissalHandler: ((ModalContainerController) -> Void)?
+    /// Whether a downward swipe closes the container. Off for pages the finger works inside (the story composer).
+    var allowsSwipeDismiss = true
 
     private let backdrop = UIView()
     private let stage = UIView()
@@ -59,6 +61,7 @@ final class ModalContainerController: UIViewController, UIGestureRecognizerDeleg
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         guard gestureRecognizer === pan else { return true }
+        guard allowsSwipeDismiss else { return false }
         let velocity = pan.velocity(in: view)
         // Downward and mostly vertical, and only when the content is not scrolled (it scrolls up first).
         return velocity.y > 0 && velocity.y > abs(velocity.x) * 1.5 && contentIsAtTop

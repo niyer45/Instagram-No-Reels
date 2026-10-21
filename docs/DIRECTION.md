@@ -155,6 +155,16 @@ Phase 2 decisions (changed with the code; rationale in each line):
   dismisses through its route change. The page underneath never leaves the hierarchy, so it is
   not reloaded. Home's story viewer uses the same container (§3.3), so there is one modal
   mechanism.
+- **Story composer** (`/create/...`, also reached from a post's share sheet "Add to story"): presented full screen
+  like `stories`, but its container ignores the swipe-down dismissal (`Route.dismissesBySwipe`), because dragging,
+  drawing and resizing inside the composer are finger gestures; it closes through Instagram's own close control (a
+  route change, which the Router turns into a dismissal) or the left-edge swipe. A full-screen page that navigates to
+  another full-screen kind (composer -> story viewer) is replaced, not stacked under a second modal, and a modal that
+  returns to the page it was presented over (composer -> the same post) only dismisses instead of pushing a copy.
+  A new web view loads the composer's URL, so a flow that depends on in-memory state of the originating page cannot
+  continue there; whether Instagram's share-to-story needs that is unknown until the `dialog-open` and `nav-blocked`
+  captures (§4) are pulled from a device. Reel-type posts route to `/reel/` URLs, which are dropped by design, so
+  sharing one to a story is dropped too.
 - **External links** (other sites) open in `SFSafariViewController` over the current page, as
   in the native app; Instagram's `l.instagram.com` link shim is unwrapped to its target;
   `mailto:`/`tel:` go to the system; App Store, `instagram://` and other app redirects and
@@ -370,6 +380,16 @@ after launch with the app active and post its notifications (a missing baseline 
   search field gains focus, from the `searchFocus` bridge message). Their `page` also has a
   `searchField` section (`null` when absent): the outline subtree (depth <= 6, <= 80 nodes) of the
   `data-native-search-field` box that `tabScanSearch` marks, with its `data-native-*` marks in each node's `data`.
+  Two question captures help find why a flow fails on a device (Home and post pages only; DEBUG; same files; the 6 newest
+  of each are kept in addition to the 12-file budget so one cannot push out the other): `dialog-open` (400 ms after a
+  `[role="dialog"]` first appears, at most one per 2 s, from the `dialogOpen` bridge message) adds a `dialog` section to
+  `page`: `{count, rect, nodes}`, the outline of the topmost dialog (depth <= 8, <= 120 nodes; fixed share-sheet labels
+  such as "Add to story" and "Copy link" appear as `aria`/`ui`, every other label is `<other>`, no text); and
+  `nav-blocked` (a navigation dropped by Bridge.js, FeedFilter or the Router; at most one per 2 s) adds a native
+  `blocked` object `{shape, decision}`: the link's shape (`hrefShape` / `RouteShape`, e.g. `/reel/<code>/?igsh=<v>`, no
+  ids, handles or query values; `<none>` for a button) and the decision kind (`bridge-block`, `feed-pushstate`,
+  `reels-button`, `router-reels`, `router-external`). Owner steps: open a post's share sheet, tap "Add to story", wait
+  3 s, then pull `Library/Caches/page-outline-dialog-open-*.json` and `page-outline-nav-blocked-*.json`.
   Message notifications add `inbox-ready` (the Messages tab's page when ready, and every watcher run; §3.7), same files and retention.
 - Commits: small, imperative subject, body says *why*. Run the checks in §5 before every
   commit.

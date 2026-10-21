@@ -79,6 +79,10 @@ struct Route: Equatable {
 
     init(url: URL) { self.init(path: url.path.isEmpty ? "/" : url.path) }
 
+    /// Whether a downward swipe on the full-screen container closes this page. A story composer is dragged, drawn on and
+    /// resized with the finger, so it closes only through Instagram's own close control or the left-edge swipe.
+    var dismissesBySwipe: Bool { kind != .create }
+
     /// Full-height pages (message threads, the new-message composer) hide the tab bar while open, like the native app.
     var hidesTabBar: Bool { kind == .thread || identity == "/direct/new/" }
 
@@ -142,5 +146,42 @@ struct Route: Equatable {
         !value.isEmpty && value.count <= 100 && value.unicodeScalars.allSatisfy {
             CharacterSet.alphanumerics.contains($0) && $0.isASCII || $0 == "_" || $0 == "-"
         }
+    }
+}
+
+/// A link reduced to its shape for DEBUG diagnostics: route words kept, handles, codes, ids and query values replaced
+/// (`/p/ABC/?igsh=x` -> `/p/<code>/?igsh=<v>`). Mirrors `hrefShape` in `Resources/Bridge.js`; both are checked against
+/// the `shapes` table of `Tests/route-fixtures.json`. Never returns user content.
+enum RouteShape {
+    private static let vocabulary: Set<String> = ["p", "reel", "reels", "tv", "stories", "highlights", "direct", "t", "inbox", "new", "requests", "explore", "tags", "locations", "people", "search", "keyword", "accounts", "activity", "edit", "login", "onetap", "emailsignup", "signup", "password", "change", "reset", "privacy_and_security", "settings", "notifications", "tagged", "saved", "followers", "following", "liked_by", "comments", "c", "audio", "about", "legal", "privacy", "terms", "web", "lite", "create", "style", "details", "challenge", "your_activity", "interactions", "u", "_u", "profile", "two_factor", "checkpoint", "story", "select"]
+    private static let variants: Set<String> = ["following", "home", "past_posts", "favorites"]
+
+    static func of(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return nil }
+        if trimmed.hasPrefix("#") { return "#" }
+        if let colon = trimmed.firstIndex(of: ":"), trimmed[trimmed.startIndex..<colon].allSatisfy({ $0.isLetter || $0.isNumber || "+.-".contains($0) }) {
+            let scheme = trimmed[trimmed.startIndex..<colon].lowercased()
+            if scheme == "javascript" { return "<script>" }
+            if scheme != "http" && scheme != "https" { return "<scheme>" }
+        }
+        guard let base = URL(string: "https://www.instagram.com/"), let url = URL(string: trimmed, relativeTo: base)?.absoluteURL,
+              RouteDecision.isOfficial(url) else { return "<external>" }
+        let parts = url.path.split(separator: "/").map(String.init)
+        var out: [String] = []
+        for (i, part) in parts.enumerated() {
+            let s = part.lowercased()
+            let previous = i > 0 ? parts[i - 1].lowercased() : ""
+            if i == 0 { out.append(vocabulary.contains(s) ? s : "<user>") }
+            else if ["p", "reel", "tv"].contains(previous) { out.append("<code>") }
+            else if previous == "stories" && s != "highlights" && s != "create" { out.append("<user>") }
+            else if previous == "tags" { out.append("<tag>") }
+            else if !s.isEmpty && s.allSatisfy({ $0.isASCII && $0.isNumber }) { out.append("<id>") }
+            else { out.append(vocabulary.contains(s) ? s : "<x>") }
+        }
+        let query = (URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []).map { item in
+            item.name + "=" + (item.name == "variant" && variants.contains(item.value ?? "") ? item.value ?? "" : "<v>")
+        }
+        return "/" + (out.isEmpty ? "" : out.joined(separator: "/") + "/") + (query.isEmpty ? "" : "?" + query.joined(separator: "&"))
     }
 }

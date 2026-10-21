@@ -20,11 +20,11 @@ final class Router {
     func open(_ url: URL, from page: WebPageViewController?) {
         guard RouteDecision.isOfficial(url) else { openExternal(url, userInitiated: false, from: page); return }
         let policy = InstagramNavigation.decision(for: url, following: [])
-        guard policy == .allow else { report(policy); return }
+        guard policy == .allow else { report(policy, url: url, from: page); return }
         guard let shell, let environment else { return }
         let route = Route(url: url)
         let presentation = Presentation(route: route)
-        if presentation == .block { report(.blockReels); return }
+        if presentation == .block { report(.blockReels, url: url, from: page); return }
 
         // A tab root on Instagram's login page opens where Instagram goes after signing in in place. Whether that
         // means a session is decided by what the page then shows (SessionEvidence), never by this navigation; legal
@@ -33,17 +33,21 @@ final class Router {
             page.load(url)
             return
         }
-        // From a full-screen page: Home (closing a viewer) just dismisses; anything else
-        // dismisses and continues from the selected tab.
-        if let page, page.placement == .modal, presentation != .fullScreen {
+        // From a full-screen page: Home (closing a viewer) just dismisses; anything else dismisses and continues from the
+        // selected tab. Another full-screen kind (a story composer opening the story viewer) replaces the page instead of
+        // stacking a second modal over it. Returning to the page the modal was presented over (closing the story composer
+        // back to the post) only dismisses: that page never left the hierarchy, so a second copy is not pushed.
+        if let page, page.placement == .modal, presentation != .fullScreen || route.kind != page.route.kind {
             page.dismiss(animated: true) { [weak self] in
-                if route.kind != .home { self?.open(url, from: nil) }
+                guard let self, route.kind != .home else { return }
+                if let underneath = self.shell?.selectedNavigation.topViewController as? WebPageViewController, underneath.route == route { return }
+                self.open(url, from: nil)
             }
             return
         }
         switch presentation {
         case .block:
-            report(.blockReels)
+            report(.blockReels, url: url, from: page)
         case .homeTab:
             shell.select(.home, popToRoot: true)
         case .searchTab:
@@ -68,6 +72,7 @@ final class Router {
             Haptics.push()
         case .fullScreen:
             let modal = ModalContainerController(content: makePage(url, placement: .modal, environment: environment))
+            modal.allowsSwipeDismiss = route.dismissesBySwipe
             shell.topmostPresenter.present(modal, animated: true)
         case .replaceRoot:
             environment.account.markSignedOut()
@@ -148,7 +153,7 @@ final class Router {
         case .instagram(let target):
             open(target, from: page)
         case .ignore:
-            dropped("external")
+            dropped("external", url: url, from: page)
         }
     }
 
@@ -225,18 +230,20 @@ final class Router {
     }
 
     /// Blocked destinations are dropped silently, like the native app (which never shows Reels or app redirects).
-    func report(_ decision: NavigationDecision) {
+    func report(_ decision: NavigationDecision, url: URL? = nil, from page: WebPageViewController? = nil) {
         switch decision {
         case .allow: return
-        case .blockReels: dropped("reels")
-        case .blockExternal, .blockUnknown: dropped("external")
+        case .blockReels: dropped("reels", url: url, from: page)
+        case .blockExternal, .blockUnknown: dropped("external", url: url, from: page)
         }
     }
 
-    /// DEBUG event log only: an enumerated reason, never the URL.
-    private func dropped(_ reason: String) {
+    /// DEBUG only: an enumerated reason in the event log (never the URL), and on Home and post pages a `nav-blocked`
+    /// outline capture with the link's shape (RouteShape: no ids, handles or query values) and the decision kind.
+    private func dropped(_ reason: String, url: URL? = nil, from page: WebPageViewController? = nil) {
         #if DEBUG
         Diagnostics.record("navigation-dropped", labels: ["reason": reason])
+        page?.debugNavigationDropped(url: url, decision: reason == "reels" ? "router-reels" : "router-external")
         #endif
     }
 

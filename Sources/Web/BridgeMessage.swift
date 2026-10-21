@@ -15,6 +15,8 @@ enum BridgeMessage: Equatable {
     case storiesSlot(top: Double)
     case searchIdle(idle: Bool, top: Double)
     case searchFocus
+    case dialogOpen
+    case navBlocked(shape: String, decision: String)
     case wordmark(WordmarkShape)
     case openControls
     case inboxState([InboxThread])
@@ -30,6 +32,14 @@ enum BridgeMessage: Equatable {
     private struct TopBody: Decodable { let top: Double }
     private struct InboxBody: Decodable { let threads: [InboxThread] }
     private struct IdleBody: Decodable { let idle: Bool; let top: Double }
+    private struct BlockedBody: Decodable { let shape: String; let decision: String }
+
+    /// Decisions a page may report for a dropped navigation (DEBUG `nav-blocked` capture).
+    static let blockDecisions: Set<String> = ["bridge-block", "feed-pushstate", "reels-button"]
+    /// A link shape (`/p/<code>/?igsh=<v>`) or one of the fixed placeholders: route words, angle-bracket placeholders and query names only.
+    static func isShape(_ value: String) -> Bool {
+        value.count <= 200 && value.unicodeScalars.allSatisfy { ("a"..."z").contains($0) || ("A"..."Z").contains($0) || ("0"..."9").contains($0) || "/<>?=&_.-#".unicodeScalars.contains($0) }
+    }
 
     private static let maximumBytes = 128 * 1024
 
@@ -72,6 +82,11 @@ enum BridgeMessage: Equatable {
             return .searchIdle(idle: value.idle, top: value.top)
         case "searchFocus":
             return .searchFocus
+        case "dialogOpen":
+            return .dialogOpen
+        case "navBlocked":
+            guard let value = read(BlockedBody.self), Self.blockDecisions.contains(value.decision), Self.isShape(value.shape) else { return nil }
+            return .navBlocked(shape: value.shape, decision: value.decision)
         case "wordmark":
             return read(WordmarkShape.self).flatMap { $0.isValid ? .wordmark($0) : nil }
         case "openControls":

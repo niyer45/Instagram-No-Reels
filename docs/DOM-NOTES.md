@@ -204,3 +204,17 @@ structure can be pulled from a device and these rules corrected.
 | Unread signal 3: bold preview | The row's second text leaf (after the name) has computed `font-weight` >= 600 (or `bold`) | assumed | If none of the signals match, every row is read and no notification is posted (fails quiet). If a signal matches rows that are read, they announce once, then the baseline holds them. |
 | Readiness | `inboxState` is posted when `document.readyState` is `complete` (or `ready` was sent), not on `ready` itself, and from a dedicated `MutationObserver` and window `load` (the shared chrome scan runs from `requestAnimationFrame`, which a hidden web view may not get) | n/a | The probe times out after 20 s and changes nothing. |
 | Throttle | At most one scan per second; a post only when the thread list (ids, flags, names) differs from the last post of this document; leaving the inbox route forgets it | n/a (ours) | — |
+
+## Share sheet and story composer (post -> "Add to story")
+
+Never observed (the owner's session cannot be reproduced in the simulator): everything here is **assumed** until a
+`dialog-open` capture (`page.dialog`) is pulled from a device.
+
+| What | Selector / rule | Found | Fallback when it fails |
+| --- | --- | --- | --- |
+| Share sheet / composer dialog | `[role="dialog"]` on a Home or post page; reported by `scanDialogs` as `dialogOpen` (<= 1 per 2 s) | assumed | If the sheet is not marked as a dialog, the capture never fires; the `bars` section still shows fixed overlays. |
+| Dialogs are not page chrome | `findTopBar` and `findTabBar` skip seeds inside `[role="dialog"],[aria-modal="true"]` (a sheet's full-width Back header or an explore link inside it was hidable as the top bar or tab bar) | ours | Test: "a share sheet dialog with a full-width Back header is not taken for the top bar". |
+| Not the stories row | `scanStoriesRow` ignores items inside `[role="dialog"]`, `[role="menu"]`, `[aria-modal="true"]` or under a `position: fixed` ancestor: two "Add to story" buttons in a floating sheet used to qualify as a 40-190 px row and were hidden on Home (`html[data-native-stories="tray"]`) | ours | Test: "Add to story buttons in a floating sheet are not the stories row". |
+| App-install prompt hiding | `tabIsAppPrompt` needs text matching "in the app" / "Open Instagram" style phrases and no input/form; a share sheet ("Add to story", "Copy link") does not match | verified by reading | Unchanged. |
+| Reels button blocker | FeedFilter click handler blocks buttons whose `aria-label` is exactly `Reels`; no share-sheet item has that label | assumed | A match would show up as `nav-blocked` with decision `reels-button`. |
+| Story composer URL | `/create/...` (kind `create`) or `/stories/create/` (kind `stories`); both full screen; unknown which one Instagram uses | unknown | `nav-blocked` / `dialog-open` captures; fixtures cover both. |

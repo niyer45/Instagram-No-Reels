@@ -104,7 +104,7 @@ function shapePath(tag,attr){
 /** Avatar URLs must be Instagram CDN images. */
 function avatarURL(src){try{const u=new URL(src);return u.protocol==='https:'&&/(^|\.)(cdninstagram\.com|fbcdn\.net)$/.test(u.hostname)?u.href:null;}catch(_){return null;}}
 /** Route words that may appear in a link shape; every other path segment is reduced to a placeholder. */
-const ROUTE_VOCAB=new Set(['p','reel','reels','tv','stories','highlights','direct','t','inbox','new','requests','explore','tags','locations','people','search','keyword','accounts','activity','edit','login','onetap','emailsignup','signup','password','change','reset','privacy_and_security','settings','notifications','tagged','saved','followers','following','liked_by','comments','c','audio','about','legal','privacy','terms','web','lite','create','style','details','challenge','your_activity','interactions','u','_u','profile','two_factor','checkpoint']);
+const ROUTE_VOCAB=new Set(['p','reel','reels','tv','stories','highlights','direct','t','inbox','new','requests','explore','tags','locations','people','search','keyword','accounts','activity','edit','login','onetap','emailsignup','signup','password','change','reset','privacy_and_security','settings','notifications','tagged','saved','followers','following','liked_by','comments','c','audio','about','legal','privacy','terms','web','lite','create','style','details','challenge','your_activity','interactions','u','_u','profile','two_factor','checkpoint','story','select']);
 const VARIANT_VALUES=new Set(['following','home','past_posts','favorites']);
 /** Reduces a link to its shape (DEBUG outline): route words kept, handles, codes, ids and query values replaced. Never returns user content. */
 function hrefShape(href){
@@ -116,15 +116,15 @@ function hrefShape(href){
  if(!official(u.href))return '<external>';
  const parts=u.pathname.split('/').filter(Boolean),out=[];
  parts.forEach((seg,i)=>{const s=seg.toLowerCase(),prev=i?parts[i-1].toLowerCase():'';
-  out.push(i===0?(ROUTE_VOCAB.has(s)?s:'<user>'):prev==='p'||prev==='reel'||prev==='tv'?'<code>':prev==='stories'&&s!=='highlights'?'<user>':prev==='tags'?'<tag>':/^\d+$/.test(s)?'<id>':ROUTE_VOCAB.has(s)?s:'<x>');});
+  out.push(i===0?(ROUTE_VOCAB.has(s)?s:'<user>'):prev==='p'||prev==='reel'||prev==='tv'?'<code>':prev==='stories'&&s!=='highlights'&&s!=='create'?'<user>':prev==='tags'?'<tag>':/^\d+$/.test(s)?'<id>':ROUTE_VOCAB.has(s)?s:'<x>');});
  const query=[];u.searchParams.forEach((v,k)=>query.push(k+'='+(k==='variant'&&VARIANT_VALUES.has(v)?v:'<v>')));
  return '/'+(out.length?out.join('/')+'/':'')+(query.length?'?'+query.join('&'):'');
 }
-const SAFE_LABELS=new Set(['Back','Home','Search','Explore','Reels','Messenger','Messages','Direct','Notifications','Activity Feed','New post','Create','Instagram','Close','Loading','Options','More','More options','Settings','Like','Unlike','Comment','Share','Share Post','Save','Remove','Down chevron icon','Chevron','Following','For you','Favorites','Stories','Carousel','Next','Previous','Go back','Play','Pause','Audio','Tags','Verified','Sponsored']);
+const SAFE_LABELS=new Set(['Back','Home','Search','Explore','Reels','Messenger','Messages','Direct','Notifications','Activity Feed','New post','Create','Instagram','Close','Loading','Options','More','More options','Settings','Like','Unlike','Comment','Share','Share Post','Save','Remove','Down chevron icon','Chevron','Following','For you','Favorites','Stories','Carousel','Next','Previous','Go back','Play','Pause','Audio','Tags','Verified','Sponsored','Add to story','Add to your story','Add post to your story','Your story','Copy link','Share to...','Send','Cancel']);
 /** An aria-label if it is a known fixed UI label, else `<other>` (labels often carry usernames); null when absent. */
 function safeLabel(label){if(label==null||label==='')return null;return SAFE_LABELS.has(label)?label:'<other>';}
 const OUTLINE_SKIP=new Set(['script','style','link','meta','noscript','template']);
-const OUTLINE_UI=new Set(['Following','For you','Favorites']);
+const OUTLINE_UI=new Set(['Following','For you','Favorites','Add to story','Add to your story','Add post to your story','Your story','Copy link','Share to...','Share','Send','Cancel','Close','Post','Reels']);
 const OUTLINE_DATA=['data-native-','data-following-','data-instagram-'];
 /** Structure-only outline of a DOM tree (DEBUG diagnostics): tags, roles, allowlisted labels, our own data-* names,
     positions, rects and link shapes. Reads no other attribute and outputs no text. `env.indexes` (a Map) receives node -> index. */
@@ -148,7 +148,7 @@ function outlineTree(body,env){
   const k=kindOf(node),has=(k&1?'i':'')+(k&2?'v':'')+(k&4?'a':'');if(has)e.has=has;
   e.n=children.length;
   if(tag==='a')e.href=hrefShape(node.getAttribute('href'));
-  if(!children.length){const t=node.textContent;if(typeof t==='string'&&t.length<=24){const s=t.trim();if(s.length<=12&&OUTLINE_UI.has(s))e.ui=s;}}
+  if(!children.length){const t=node.textContent;if(typeof t==='string'&&t.length<=40){const s=t.trim();if(s.length<=24&&OUTLINE_UI.has(s))e.ui=s;}}
   if(indexes)indexes.set(node,e.i);
   nodes.push(e);
   if(tag==='svg'||depth>=maxDepth)return;
@@ -189,7 +189,11 @@ function outlineSections(doc,env,bodyTree,bodyIndexes){
  let searchField=null;
  if(fieldNode){const r=env.rectOf(fieldNode)||{};
   searchField={rect:[r.x,r.y,r.width,r.height].map(v=>Math.round(Number(v)||0)),nodes:outlineTree(fieldNode,{...env,indexes:undefined,maxNodes:80,maxDepth:6}).nodes};}
- return {main:mainTree,bars,searchField};
+ // The topmost dialog (DEBUG `dialog-open` capture): share sheet, story composer, menus. Structure only, same sanitizer.
+ let dialog=null;
+ const dialogs=Array.from(doc.querySelectorAll('[role="dialog"]')),dialogNode=dialogs.length?dialogs[dialogs.length-1]:null;
+ if(dialogNode){const r=env.rectOf(dialogNode)||{};dialog={count:dialogs.length,rect:[r.x,r.y,r.width,r.height].map(v=>Math.round(Number(v)||0)),nodes:outlineTree(dialogNode,{...env,indexes:undefined,maxNodes:120,maxDepth:8}).nodes};}
+ return {main:mainTree,bars,searchField,dialog};
 }
 if(typeof module!=='undefined'&&module.exports){module.exports={classify,decide,readiness,official,opaqueRGB,surfaceRGB,avatarURL,shapePath,hrefShape,safeLabel,outlineTree,outlineMarks,outlineSections};return;}
 if(window.top!==window||!official(location.href))return;
@@ -225,9 +229,11 @@ window.__instagram=Object.freeze({
    const tree=outlineTree(document.body,env),sections=outlineSections(document,env,tree,env.indexes),prop=k=>root.style.getPropertyValue(k),q=hrefShape('/'+location.search)||'';
    return {route:{kind:classify(location.pathname).kind,search:q.includes('?')?q.slice(q.indexOf('?')):''},viewport:{w:window.innerWidth,h:window.innerHeight},scroll:{x:Math.round(window.scrollX),y:Math.round(window.scrollY)},documentHeight:Math.round(root.scrollHeight),
     layout:{headerHeight:prop('--native-header-height'),storiesHeight:prop('--native-stories-height'),chrome:root.getAttribute('data-native-chrome'),page:root.getAttribute('data-native-page'),stories:root.getAttribute('data-native-stories'),refreshing:root.getAttribute('data-native-refreshing')!==null},
-    marks:outlineMarks(document,n=>env.indexes.has(n)?env.indexes.get(n):-1,env),outline:tree.nodes,truncated:tree.truncated,main:sections.main,bars:sections.bars,searchField:sections.searchField};
+    marks:outlineMarks(document,n=>env.indexes.has(n)?env.indexes.get(n):-1,env),outline:tree.nodes,truncated:tree.truncated,main:sections.main,bars:sections.bars,searchField:sections.searchField,dialog:sections.dialog};
   }catch(_){return {error:'exception'};}},
  post,
+ /** Reports a dropped navigation for the DEBUG `nav-blocked` capture (FeedFilter calls it too). */
+ blocked(url,decision){reportBlocked(url,decision);},
  get currentPolicy(){return policy;}
 });
 applyLayout();armRefreshFailsafe();
@@ -236,8 +242,18 @@ applyLayout();armRefreshFailsafe();
 let lastRoute='',webTitle='';
 function postRoute(){const title=(webTitle||String(document.title||'').replace(/(^|\s*[•|]\s*)Instagram.*$/,'')).trim().slice(0,80);
  const key=location.pathname+'\n'+location.search+'\n'+title;if(key===lastRoute)return;lastRoute=key;post('route',{path:location.pathname,search:location.search,title});}
+// DEBUG `nav-blocked` capture trigger only (native ignores it in release): a navigation was dropped on a Home or post page.
+// Sends the link's shape (route words kept; handles, codes, ids and query values replaced) and an enumerated decision, never the URL.
+const BLOCK_DECISIONS=new Set(['bridge-block','feed-pushstate','reels-button']);
+function reportBlocked(url,decision){
+ if(role!=='page'||!BLOCK_DECISIONS.has(decision))return;
+ const kind=classify(location.pathname).kind;if(kind!=='home'&&kind!=='post')return;
+ let shape='<none>';try{if(url)shape=hrefShape(new URL(String(url),location.href).href)||'<none>';}catch(_){}
+ post('navBlocked',{shape,decision});
+}
 function intercept(url){const decision=decide(location.href,url,role);
  if(decision==='native'){try{post('navigate',{url:new URL(url,location.href).href});}catch(_){}return true;}
+ if(decision==='block')reportBlocked(url,'bridge-block');
  return decision==='block';}
 // Instagram's router can render the next page in place around a history change that is cancelled here. The route
 // content (main, its first child, header and first article) is compared with the state at the user's last touch (or at
@@ -332,10 +348,14 @@ function requestTheme(){
 
 // Web chrome: mark Instagram's tab bar, top bar and app banners so NativeSkin.css hides them.
 function pathOf(a){try{const u=new URL(a.getAttribute('href'),location.href);return official(u.href)?u.pathname:null;}catch(_){return null;}}
+/** Whether a node sits inside a dialog (share sheet, story composer, menu): the page's own chrome never lives there, so a dialog's
+    full-width header (Back / title) or link must not be taken for the top bar or tab bar and hidden. */
+function inDialog(node){return !!(node&&node.closest&&node.closest('[role="dialog"],[aria-modal="true"]'));}
 function findTabBar(){
  const marked=document.querySelector('[data-native-hidden="tabbar"]');if(marked)return marked;
  const height=window.innerHeight||0;
  for(const seed of document.querySelectorAll('a[href="/explore/"],a[href="https://www.instagram.com/explore/"]')){
+  if(inDialog(seed))continue;
   // The outermost bar-sized wrapper, so the bar's own border and background go too.
   let best=null,node=seed.parentElement;
   for(let depth=0;node&&depth<8&&node!==document.body;depth++,node=node.parentElement){
@@ -352,6 +372,7 @@ function findTopBar(){
  const marked=document.querySelector('[data-native-hidden="header"]');if(marked)return marked;
  const width=window.innerWidth||0;
  for(const seed of document.querySelectorAll('svg[aria-label="Instagram"],svg[aria-label="Back"],[aria-label="Back"]')){
+  if(inDialog(seed))continue;
   let best=null,node=seed.parentElement;
   for(let depth=0;node&&depth<8&&node!==document.body;depth++,node=node.parentElement){
    if(node.querySelector('main,article,input,textarea,[role="combobox"],a[href^="/stories/"]'))break;
@@ -493,14 +514,21 @@ function probeFollowingBar(){
 // tray is active (html[data-native-stories="tray"]). Items are story links/buttons outside cards; the row is the outermost
 // ancestor (<= 7 up) that is 40-190 px tall, wide, holds >= 2 items and no post, card, slot or main. Selector notes: docs/DOM-NOTES.md.
 const STORY_ITEMS='a[href^="/stories/"],a[href^="https://www.instagram.com/stories/"],button[aria-label*="story" i],[role="button"][aria-label*="story" i]';
-const STORY_ITEM_SKIP='article,[data-following-approved],[data-native-hidden],[role="dialog"]';
+const STORY_ITEM_SKIP='article,[data-following-approved],[data-native-hidden],[role="dialog"],[role="menu"],[aria-modal="true"]';
+// A share sheet or composer that is not marked as a dialog still floats: items under a fixed-position ancestor are never the feed's row.
+function inFixedOverlay(item){
+ if(typeof getComputedStyle!=='function')return false;
+ let node=item.parentElement;
+ for(let depth=0;node&&depth<12&&node!==document.body&&node!==document.documentElement;depth++,node=node.parentElement)if(getComputedStyle(node).position==='fixed')return true;
+ return false;
+}
 const STORY_ROW_EXCLUDE='article,a[href*="/p/"],[data-following-approved],[data-instagram-stories-slot],main';
 function scanStoriesRow(){
  if(role!=='page'||!isHome())return;
  for(const old of document.querySelectorAll('[data-native-stories-row]'))
   if(!old.isConnected||old.querySelector(STORY_ROW_EXCLUDE))old.removeAttribute('data-native-stories-row');
  if(document.querySelector('[data-native-stories-row]'))return;
- const items=[...document.querySelectorAll(STORY_ITEMS)].filter(i=>!i.closest(STORY_ITEM_SKIP));
+ const items=[...document.querySelectorAll(STORY_ITEMS)].filter(i=>!i.closest(STORY_ITEM_SKIP)&&!inFixedOverlay(i));
  if(items.length<2)return;
  const width=window.innerWidth||0,found=[];
  for(const item of items){
@@ -512,6 +540,19 @@ function scanStoriesRow(){
   if(best&&!found.includes(best))found.push(best);
  }
  for(const row of found)if(!found.some(o=>o!==row&&o.contains(row)))row.setAttribute('data-native-stories-row','');
+}
+// DEBUG `dialog-open` capture trigger only (native ignores it in release): a [role="dialog"] appeared on a Home or post page
+// (share sheet, story composer, menus). At most one message per 2 s; a dialog skipped by the throttle is picked up by a later scan.
+const DIALOG_THROTTLE_MS=2000;
+let lastDialogPost=-Infinity;const seenDialogs=new WeakSet();
+function scanDialogs(){
+ if(role!=='page')return;
+ const kind=classify(location.pathname).kind;if(kind!=='home'&&kind!=='post')return;
+ for(const dialog of document.querySelectorAll('[role="dialog"]')){
+  if(seenDialogs.has(dialog))continue;
+  const t=now();if(t-lastDialogPost<DIALOG_THROTTLE_MS)return;
+  seenDialogs.add(dialog);lastDialogPost=t;post('dialogOpen');return;
+ }
 }
 let lastAvatar='';
 function scanChrome(){
@@ -534,6 +575,7 @@ function scanChrome(){
  }
  for(const banner of findBanners())if(!banner.hasAttribute('data-native-hidden'))banner.setAttribute('data-native-hidden','banner');
  scanStoriesRow();
+ scanDialogs();
 }
 
 /** Instagram's top bar is position:fixed and the element right after it reserves the bar's height with padding-top

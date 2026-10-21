@@ -777,6 +777,58 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
     static func ints(_ rect: CGRect) -> [Int] {
         [rect.minX, rect.minY, rect.width, rect.height].map { $0.isFinite ? Int($0.rounded()) : 0 }
     }
+
+    // MARK: Dialog and blocked-navigation captures (DEBUG)
+
+    /// When each question capture (`dialog-open`, `nav-blocked`) last ran on this page: at most one per 2 s.
+    private var lastQuestionCapture: [String: Date] = [:]
+
+    /// Only Home and post pages are of interest (the share sheet and "Add to story" start there).
+    private var capturesQuestions: Bool { (route.kind == .home || route.kind == .post) && !isLoginContent }
+
+    private func throttled(_ capture: String) -> Bool {
+        let now = Date()
+        if let last = lastQuestionCapture[capture], now.timeIntervalSince(last) < 2 { return true }
+        lastQuestionCapture[capture] = now
+        return false
+    }
+
+    /// A `[role="dialog"]` appeared: capture the page outline (with its `dialog` section) once the dialog has rendered.
+    private func dialogDidOpen() {
+        guard capturesQuestions, !throttled("dialog-open") else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            self?.captureQuestionOutline("dialog-open", extra: [:])
+        }
+    }
+
+    /// A navigation was dropped or blocked on this page: capture the outline with the link's shape and the decision kind.
+    func debugNavigationDropped(url: URL?, decision: String) {
+        noteDrop(shape: url.flatMap { RouteShape.of($0.absoluteString) } ?? "<none>", decision: decision)
+    }
+
+    private func noteDrop(shape: String, decision: String) {
+        guard capturesQuestions, !throttled("nav-blocked") else { return }
+        captureQuestionOutline("nav-blocked", extra: ["blocked": ["shape": shape, "decision": decision]])
+    }
+
+    private func captureQuestionOutline(_ capture: String, extra: [String: Any]) {
+        guard capturesQuestions else { return }
+        let script = "window.__instagram&&window.__instagram.outline?window.__instagram.outline():null"
+        webView.evaluateJavaScript(script) { [weak self] result, _ in
+            guard let outline = result as? [String: Any] else { return }
+            Task { @MainActor in
+                guard let self else { return }
+                var native: [String: Any] = [
+                    "webViewFrame": Self.ints(self.webView.frame),
+                    "isReady": self.isReady,
+                    "placement": self.placement == .modal ? "modal" : "inline",
+                    "routeKind": self.route.kind.rawValue,
+                ]
+                for (key, value) in extra { native[key] = value }
+                Diagnostics.writeOutline(outline, native: native, capture: capture)
+            }
+        }
+    }
     #endif
 
     /// Hooks for Home: freeze the header at the held distance, then settle it with the posts.
@@ -829,6 +881,16 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
             pageMessage(message)
         case .searchFocus:
             break
+        case .dialogOpen:
+            #if DEBUG
+            dialogDidOpen()
+            #endif
+        case .navBlocked(let shape, let decision):
+            #if DEBUG
+            noteDrop(shape: shape, decision: decision)
+            #else
+            _ = (shape, decision)
+            #endif
         case .inboxState(let threads):
             // The visible Messages tab's own inbox: those threads are seen (message notifications' baseline).
             if route.kind == .inbox {
@@ -886,9 +948,9 @@ class WebPageViewController: UIViewController, WKNavigationDelegate, WKUIDelegat
             return
         }
         let policy = InstagramNavigation.decision(for: target, following: [])
-        guard policy == .allow else { decisionHandler(.cancel); environment.router.report(policy); return }
+        guard policy == .allow else { decisionHandler(.cancel); environment.router.report(policy, url: target, from: self); return }
         let next = Route(url: target)
-        if next.kind == .blocked { decisionHandler(.cancel); environment.router.report(.blockReels); return }
+        if next.kind == .blocked { decisionHandler(.cancel); environment.router.report(.blockReels, url: target, from: self); return }
         if !hasCommitted {
             // The initial load and its redirects stay in this page (e.g. a redirect to login).
             let variant = URLComponents(url: target, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "variant" })?.value ?? "home"

@@ -27,11 +27,18 @@ enum RouteChecks {
             let title = Route(path: row[0]).title(query: row[1], webTitle: row[2], ownUsername: row[3].isEmpty ? nil : row[3])
             check(title == row[4], "Title \(row[0])\(row[1]) = \"\(row[4])\", got \"\(title)\"")
         }
+        for row in object["shapes"] ?? [] where row.count == 2 {
+            let shape = RouteShape.of(row[0])
+            check(shape == row[1], "Shape \(row[0]) = \(row[1]), got \(shape ?? "nil")")
+        }
+        check(RouteShape.of("") == nil && !(object["shapes"] ?? []).isEmpty, "Shape fixtures loaded; an empty link has no shape")
         for row in presentations where row.count == 2 {
             let presentation = Presentation(route: Route(path: row[0]))
             check(presentation.name == row[1], "Presentation \(row[0]) = \(row[1]), got \(presentation.name)")
         }
         check(Presentation(kind: .stories) == .fullScreen && Presentation(kind: .create) == .fullScreen, "Stories and create present full screen")
+        check(!Route(path: "/create/story/").dismissesBySwipe && Route(path: "/stories/alice/1/").dismissesBySwipe, "The story composer ignores the swipe-down dismissal; the story viewer keeps it")
+        check(Route(path: "/p/ABC/") == Route(path: "/alice/p/ABC/") && Route(path: "/p/ABC/") != Route(path: "/p/DEF/"), "A post page is recognised by its code, so closing a composer over it does not push a second copy")
         check(Presentation(kind: .login) == .replaceRoot, "Login replaces the root")
         check(Presentation(kind: .blocked) == .block, "Reels routes are blocked")
         for kind in [RouteKind.profile, .post, .comments, .likes, .activity, .settings, .other] {

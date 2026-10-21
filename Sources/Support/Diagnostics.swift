@@ -83,7 +83,8 @@ enum Diagnostics {
 
     // MARK: Page outlines
 
-    private static let outlineCaptures: Set<String> = ["ready", "ready-3s", "refresh-start", "refresh-loading", "refresh-end", "scrolled", "search-ready", "search-ready-3s", "search-focus", "inbox-ready"]
+    private static let outlineCaptures: Set<String> = ["ready", "ready-3s", "refresh-start", "refresh-loading", "refresh-end", "scrolled", "search-ready", "search-ready-3s", "search-focus", "inbox-ready", "dialog-open", "nav-blocked"]
+    private static let questionCaptures = ["dialog-open", "nav-blocked"]
     @MainActor private static var outlineSequence: Int?
 
     /// Sequence number of an outline file name (`page-outline-<capture>-<n>.json`).
@@ -110,9 +111,16 @@ enum Diagnostics {
         guard JSONSerialization.isValidJSONObject(document),
               let data = try? JSONSerialization.data(withJSONObject: document, options: [.sortedKeys, .prettyPrinted]) else { return }
         try? data.write(to: directory.appendingPathComponent("page-outline-\(capture)-\(n).json"), options: [.atomic])
+        // Keeps the 12 newest outlines, and the 6 newest of each question capture on top of that, so a burst of
+        // `nav-blocked` files cannot push out the one `dialog-open` file an owner is about to pull.
         let all = existing + [("page-outline-\(capture)-\(n).json", n)]
-        for (name, _) in all.sorted(by: { $0.1 > $1.1 }).dropFirst(12) {
-            try? manager.removeItem(at: directory.appendingPathComponent(name))
+        let sorted = all.sorted(by: { $0.1 > $1.1 })
+        var keptByGroup: [String: Int] = [:]
+        for (name, _) in sorted {
+            let group = Self.questionCaptures.first { name.hasPrefix("page-outline-\($0)-") } ?? ""
+            let kept = keptByGroup[group, default: 0]
+            keptByGroup[group] = kept + 1
+            if kept >= (group.isEmpty ? 12 : 6) { try? manager.removeItem(at: directory.appendingPathComponent(name)) }
         }
     }
 

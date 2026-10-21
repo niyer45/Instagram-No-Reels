@@ -69,7 +69,7 @@ function page(pathname,build,{search='',headerHeight=44,scrollY=0,manual=false}=
   setTimeout:f=>{if(manual){timers.push(f);return timers.length;}f();return 0;},requestAnimationFrame:f=>frames.push(f),performance:{now:()=>clock.t},
   getComputedStyle:n=>({display:n.css.display||'block',visibility:'visible',opacity:'1',position:n.css.position||'static',backgroundColor:'rgba(0, 0, 0, 0)',pointerEvents:'auto',paddingBottom:'0px',paddingTop:n.css.paddingTop||'0px',height:'auto'}),
   MutationObserver:class{constructor(f){listeners.mutation=f;}observe(){}}};
- const api={clock,timers,html,body,document,window,listeners,setStack:f=>{stack=f;}};
+ const api={clock,timers,html,body,document,window,listeners,posted,setStack:f=>{stack=f;}};
  build(body,api);
  vm.runInNewContext(source,context);
  api.flush=()=>{for(let i=0;i<3;i++){const run=frames.splice(0);for(const f of run)f();}};
@@ -278,4 +278,57 @@ test('an inner div marked by an earlier scan is upgraded to the nav on the next 
  assert.equal(mark(p.nav),'following-bar');
  assert.equal(p.nav.getAttribute('data-native-bar-height'),'45');
  assert.equal(mark(p.inner),null);assert.equal(p.inner.getAttribute('data-native-bar-height'),null);
+});
+
+// --- Sharing a post to a story: the share sheet and story composer must stay visible and usable. ---
+const sheetHeader=()=>h('div',{},[h('svg',{'aria-label':'Back'}),h('span',{},[],{text:'Share'})],{rect:{top:0,left:0,width:390,height:50},css:{position:'fixed'}});
+
+test('a share sheet dialog with a full-width Back header is not taken for the top bar',()=>{
+ const p=page('/p/ABC/',(body,api)=>{
+  api.dialog=h('div',{role:'dialog'},[sheetHeader(),h('button',{'aria-label':'Add to story'},[],{text:'Add to story'})],{rect:{top:0,left:0,width:390,height:844},css:{position:'fixed'}});
+  body.appendChild(h('main',{},[h('article')],{rect:{top:0,width:390,height:900}}));body.appendChild(api.dialog);
+ });
+ assert.equal(p.html.querySelector('[data-native-hidden]'),null,'nothing in or around the sheet is hidden');
+ const control=page('/p/ABC/',(body)=>{body.appendChild(sheetHeader());body.appendChild(h('main',{},[h('article')],{rect:{top:50,width:390,height:900}}));});
+ assert.equal(mark(control.body.children[0]),'header','the same bar outside a dialog is still the page header');
+});
+
+test('Add to story buttons in a floating sheet are not the stories row, in a dialog or not',()=>{
+ const sheet=(attrs,css)=>h('div',attrs,[h('button',{'aria-label':'Add to story'}),h('button',{'aria-label':'Add to your story'})],{rect:{top:700,left:0,width:390,height:100},css});
+ const fixedSheet=home((body)=>{body.appendChild(sheet({},{position:'fixed'}));});
+ assert.equal(fixedSheet.html.querySelector('[data-native-stories-row]'),null);
+ const dialogSheet=home((body)=>{body.appendChild(sheet({role:'dialog'},{}));});
+ assert.equal(dialogSheet.html.querySelector('[data-native-stories-row]'),null);
+ const inFlow=home((body)=>{body.appendChild(sheet({},{}));});
+ assert.notEqual(inFlow.html.querySelector('[data-native-stories-row]'),null,'the feed row itself is still found');
+});
+
+test('dialogOpen is posted once per dialog on Home and post pages, at most every 2 s, never elsewhere',()=>{
+ const count=p=>p.posted.filter(m=>m.type==='dialogOpen').length;
+ const dialog=()=>h('div',{role:'dialog'},[h('button',{},[],{text:'Add to story'})],{rect:{top:300,left:0,width:390,height:500}});
+ const p=page('/p/ABC/',(body)=>body.appendChild(h('main',{},[h('article')],{rect:{top:0,width:390,height:900}})));
+ assert.equal(count(p),0);
+ const first=dialog();p.body.appendChild(first);p.scan();assert.equal(count(p),1);
+ p.scan();p.scan();assert.equal(count(p),1,'the same dialog is reported once');
+ const second=dialog();p.body.appendChild(second);p.clock.t+=500;p.scan();assert.equal(count(p),1,'throttled within 2 s');
+ p.clock.t+=2000;p.scan();assert.equal(count(p),2,'picked up by a later scan once the throttle has passed');
+ const home1=home((body)=>body.appendChild(dialog()));assert.equal(count(home1),1);
+ const profile=page('/alice/',(body)=>body.appendChild(dialog()));assert.equal(count(profile),0);
+ assert.deepEqual(Object.keys(p.posted.find(m=>m.type==='dialogOpen')),['type'],'no payload');
+});
+
+test('a blocked link on Home or a post reports navBlocked with its shape only; elsewhere nothing',()=>{
+ const click=(p,href)=>{const link={getAttribute:()=>href,href};const event={defaultPrevented:false,target:{closest:()=>link},preventDefault(){},stopImmediatePropagation(){}};for(const f of p.listeners['win:click'])f(event);};
+ const blocked=p=>p.posted.filter(m=>m.type==='navBlocked');
+ const feed=home(()=>{});click(feed,'/reel/ABC123/?igsh=secret');
+ assert.deepEqual(blocked(feed).map(({shape,decision})=>({shape,decision})),[{shape:'/reel/<code>/?igsh=<v>',decision:'bridge-block'}]);
+ const post=page('/p/ABC/',()=>{});click(post,'https://www.instagram.com/alice/reels/');
+ assert.deepEqual(blocked(post).map(m=>m.shape),['/<user>/reels/']);
+ const profile=page('/alice/',()=>{});click(profile,'/reels/');assert.equal(blocked(profile).length,0);
+ click(feed,'/bob/');assert.equal(blocked(feed).length,1,'ordinary navigations are not reported');
+ feed.window.__instagram.blocked('https://www.instagram.com/reel/XYZ/?igsh=a','feed-pushstate');
+ feed.window.__instagram.blocked('','reels-button');
+ feed.window.__instagram.blocked('/reel/X/','anything-else');
+ assert.deepEqual(blocked(feed).slice(1).map(m=>[m.shape,m.decision]),[['/reel/<code>/?igsh=<v>','feed-pushstate'],['<none>','reels-button']]);
+ assert.ok(!JSON.stringify(feed.posted).includes('ABC123')&&!JSON.stringify(feed.posted).includes('secret')&&!JSON.stringify(feed.posted).includes('XYZ'));
 });
